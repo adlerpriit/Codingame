@@ -22,6 +22,13 @@ def getClosest(pool,buster):
             rid = myid
     return(dict(d=dist_from,id=rid))
 
+def gostAvail(gid,gost):
+    #this is potential conflict that can just consume time, should try to stun instead
+    if gost[gid]['s'] == 0 and gost[gid]['v'] > 0:
+        return(0)
+    else:
+        return(1)
+
 def reduceStun(stun):
     for i in list(stun):
         if stun[i] == 0:
@@ -64,6 +71,8 @@ while True:
             gost[eid] = dict(pos=[x,y],s=state,v=value)
         else:
             oppo[eid] = dict(pos=[x,y],s=state,v=value)
+    print(gost,file=sys.stderr)
+    print(oppo,file=sys.stderr)
     for bid in sorted(bust):
         if bust[bid]['s'] == 1:
             if bust[bid]['v'] in gost:
@@ -76,20 +85,27 @@ while True:
             else:
                 print("MOVE " + " ".join([str(x) for x in base]) + " opt to base")
         else:
+            gid = getClosest(gost,bust[bid])
             oid = getClosest(oppo,bust[bid])
-            if oid['id'] in oppo and oppo[oid['id']]['s'] != 2 and bid not in stun:
-                if oid['d'] < 1760:
-                    print("STUN " + str(oid['id']))
-                    stun[bid] = 20
+            if gid['id'] in gost and gid['d'] > 900:
+                if gid['d'] < 1705 and gostAvail(gid['id'],gost) == 1:
+                    print("BUST " + str(gid['id']))
                 else:
-                    print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " opt toward oppo " + str(oid['id']))
-            else:
-                gid = getClosest(gost,bust[bid])
-                if gid['id'] in gost:
-                    if gid['d'] < 1705:
-                        print("BUST " + str(gid['id']))
+                    if oid['id'] in oppo and oppo[oid['id']]['s'] != 2 and bid not in stun:
+                        if oid['d'] < 1760:
+                            print("STUN " + str(oid['id']))
+                            stun[bid] = 20
+                        else:
+                            print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " opt toward oppo " + str(oid['id']))
                     else:
                         print("MOVE " + " ".join([str(x) for x in gost[gid['id']]['pos']]) + " opt toward gost " + str(gid['id']))
+            else:
+                if oid['id'] in oppo and oppo[oid['id']]['s'] != 2:
+                    if oid['d'] < 1760 and bid not in stun:
+                        print("STUN " + str(oid['id']))
+                        stun[bid] = 20
+                    else:
+                        print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " opt toward oppo " + str(oid['id']))
                 else:
                     #not carrieng a gost not running toward one, find random target to go
                     #sort pois by distance
