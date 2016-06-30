@@ -7,7 +7,8 @@ import random
 pcount = int(input())  # the amount of busters you control
 gcount = int(input())  # the amount of ghosts on the map
 my_tid = int(input())  # if this is 0, your base is on the top left of the map, if it is one, on the bottom right
-base = [0,0] if my_tid == 0 else [16000, 9000]
+base = [0,0] if my_tid == 0 else [16000,9000]
+oase = [0,0] if my_tid == 1 else [16000,9000]
 
 def getDist(pos_a,pos_b):
     return(math.sqrt(abs(pos_a[0]-pos_b[0])**2 + abs(pos_a[1]-pos_b[1])**2))
@@ -22,31 +23,31 @@ def getClosest(pool,buster):
             rid = myid
     return(dict(d=dist_from,id=rid))
 
-def gostAvail(gid,gost):
-    #not using this, better to stall until someone else gets there, does not really matter whether own or foe
-    #this is potential conflict that can just consume time, should try to stun instead
-    if gost[gid]['s'] == 0 and gost[gid]['v'] > 0:
-        return(0)
-    else:
-        return(1)
-
-def getWeakest(goi,buster):
+def getWeakest(goi,gost,buster):
     dist_from = math.sqrt(16001**2 + 9001**2)
     #sort based on status, then choose the closest one
-    rid = -1
-    state = 40
-    for gid in sorted(goi,key=lambda x: goi[x]['s']):
-        dist_from_entity = getDist(goi[gid]['pos'],buster['pos'])
-        if dist_from_entity < 800:
-            del(goi[gid])
-        else:
-            if dist_from_entity < dist_from and buster['s'] != 1:
-                dist_from = dist_from_entity
-                rid = gid
-            if state < goi[gid]['s']:
-                return(rid)
-            state = goi[gid]['s']
-    return(rid)
+    if buster['s'] == 3:
+        rid = buster['v']
+        dist = getDist(goi[rid]['pos'],buster['pos'])
+        return(dict(d=dist,id=rid))
+    slist = sorted(goi,key=lambda x: goi[x]['s'])
+    if len(slist) == 0:
+        return(dict(d=dist_from,id=-1))
+    else:
+        rid = slist.pop()
+        state = goi[rid]['s']
+        for gid in slist:
+            dist_from_entity = getDist(goi[gid]['pos'],buster['pos'])
+            if dist_from_entity < 900 and gid not in gost:
+                del(goi[gid])
+            else:
+                if dist_from_entity < dist_from and buster['s'] != 1:
+                    dist_from = dist_from_entity
+                    rid = gid
+                if state + 10 < goi[gid]['s']:
+                    return(dict(d=dist_from,id=rid))
+                state = goi[gid]['s']
+        return(dict(d=dist_from,id=rid))
 
 def reduceStun(stun):
     for i in list(stun):
@@ -54,11 +55,12 @@ def reduceStun(stun):
             del(stun[i])
         else:
             stun[i] -= 1
+    print(stun,file=sys.stderr)
 
 def initPoi(poi):
     for x in range(8):
-        for y in range(9):
-            poi[" ".join([str(i) for i in [x,y]])] = [x*2000+1000,y*1000+500]
+        for y in range(8):
+            poi[" ".join([str(i) for i in [x,y]])] = [x*2000+1000,y*1000+1000]
 
 #waypoinst to go through
 poi = dict()
@@ -79,6 +81,10 @@ while True:
     oppo = dict()
     #visible ghosts
     gost = dict()
+    #assigned poi
+    apoi = dict()
+    #escort service
+    escort = []
     entities = int(input())  # the number of busters and ghosts visible to you
     for i in range(entities):
         # entity_id: buster id or ghost id
@@ -89,15 +95,16 @@ while True:
         eid, x, y, etype, state, value = [int(j) for j in input().split()]
         if etype == my_tid:
             bust[eid] = dict(pos=[x,y],s=state,v=value)
+            if state == 1:
+                escort.append(eid)
         elif etype == -1:
             gost[eid] = dict(pos=[x,y],s=state,v=value)
             goi[eid] = dict(pos=[x,y],s=state,v=value)
         else:
             if state != 2:
                 oppo[eid] = dict(pos=[x,y],s=state,v=value)
-    print(gost,file=sys.stderr)
-    print(oppo,file=sys.stderr)
     for bid in sorted(bust):
+        isStun = "W" + str(stun[bid]) if bid in stun else ""
         toPoi = math.sqrt(16001**2 + 9001**2)
         tid = -1
         for pid in list(poi):
@@ -105,18 +112,19 @@ while True:
             if dist_to_poi < 1760:
                 del(poi[pid])
             else:
-                if dist_to_poi < toPoi:
+                if dist_to_poi < toPoi and pid not in apoi:
                     toPoi = dist_to_poi
                     tid = pid
+        apoi[tid] = bid
         #print(poi,file=sys.stderr)
         oid = getClosest(oppo,bust[bid])
         #if possible to stun, then stun. Seems that it could be priority
-        if oid['id'] in oppo and bid not in stun and oid['id'] not in stun and oid['d'] < 1760:
+        if oid['id'] in oppo and bid not in stun and oid['id'] not in stun and oid['d'] <= 1760:
             print("STUN " + str(oid['id']))
             stun[bid] = 20
             stun[oid['id']] = 10
         else:
-        #now if I have a ghost delived ti to home
+        #now if I have a ghost delived it to home
             if bust[bid]['s'] == 1:
                 if bust[bid]['v'] in goi:
                     del(goi[bust[bid]['v']])
@@ -127,37 +135,36 @@ while True:
                 if dist_from_base < 1600:
                     print("RELEASE")
                 else:
-                    print("MOVE " + " ".join([str(x) for x in base]) + " opt to base")
+                    print("MOVE " + " ".join([str(x) for x in base]) + " B")
             else:
-                #now we should try to follow opponent with a ghost
-                if oid['id'] in oppo and oppo[oid['id']]['s'] == 1 and oid['id'] not in stun:
-                    if oid['d'] < 1760 and bid not in stun:
-                        print("STUN " + str(oid['id']))
-                        stun[bid] = 20
-                    else:
-                        print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " opt toward oppo " + str(oid['id']))
+                if len(escort) > 0 and bust[bid]['s'] == 6 and turnNR > 225:
+                    tbid = escort.pop()
+                    print("MOVE " + " ".join([str(x) for x in bust[tbid]['pos']]) + " SUP " + str(tbid) + " " + isStun)
                 else:
-                    gid = getClosest(gost,bust[bid])
-                    if gid['id'] in gost and gid['d'] > 900 and (turnNR > 35 or gost[gid['id']]['s'] < 5):
-                        if gid['d'] < 1705:
-                            # and gostAvail(gid['id'],gost) == 1
-                            print("BUST " + str(gid['id']))
+                    #now we should try to follow opponent with a ghost
+                    if oid['id'] in oppo and oppo[oid['id']]['s'] == 1 and oid['id'] not in stun and (bid not in stun or stun[bid] < getDist(oppo[oid['id']]['pos'],oase)/800):
+                        if oid['d'] < 1760 and bid not in stun:
+                            print("STUN " + str(oid['id']) + " S " + str(oid['id']))
+                            stun[bid] = 20
+                            goi[oppo[oid['id']]['v']] = dict(pos=oppo[oid['id']]['pos'],s=0,v=0)
                         else:
-                            print("MOVE " + " ".join([str(x) for x in gost[gid['id']]['pos']]) + " opt toward gost " + str(gid['id']))
+                            print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " O " + str(oid['id']) + " " + isStun)
                     else:
-                        gid = getWeakest(goi,bust[bid])
-                        if gid in goi and turnNR > 125:
-                            print("MOVE " + " ".join([str(x) for x in goi[gid]['pos']]) + " opt toward goi " + str(gid))
+                        gid = getWeakest(goi,gost,bust[bid])
+                        gid['b'] = bid
+                        if gid['id'] in goi:
+                            gid['s'] = goi[gid['id']]['s']
+                        print(gid,file=sys.stderr)
+                        if tid in poi and (gid['id'] not in goi or gid['s'] > 10):
+                            print("MOVE " + " ".join([str(x) for x in poi[tid]]) + " POI " + str(tid) + " " + isStun)
                         else:
-                            #not carrieng a gost not running toward one, find random target to go
-                            #sort pois by distance
-                            if tid in poi:
-                                print("MOVE " + " ".join([str(x) for x in poi[tid]]) + " opt toward poi " + str(tid))
+                            if gid['id'] in goi and gid['d'] > 900:
+                                if gid['d'] < 1705 and gid['id'] in gost:
+                                    # and gostAvail(gid['id'],gost) == 1
+                                    print("BUST " + str(gid['id']) + " B " + str(gid['id']) + " " + isStun)
+                                else:
+                                    print("MOVE " + " ".join([str(x) for x in goi[gid['id']]['pos']]) + " G " + str(gid['id']) + " " + isStun)
                             else:
-                                print("MOVE " + " ".join([str(x) for x in base]) + " opt to final base")
-        turnNR += 1
-        # Write an action using print
-        # To debug: print("Debug messages...", file=sys.stderr)
-
-        # MOVE x y | BUST id | RELEASE
-        #print("MOVE 8000 4500")
+                                print("MOVE " + " ".join([str(x) for x in base]) + " KILLED ME?" + " " + isStun)
+    turnNR += 1
+    print(goi,file=sys.stderr)
