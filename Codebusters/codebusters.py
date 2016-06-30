@@ -8,7 +8,7 @@ pcount = int(input())  # the amount of busters you control
 gcount = int(input())  # the amount of ghosts on the map
 my_tid = int(input())  # if this is 0, your base is on the top left of the map, if it is one, on the bottom right
 base = [0,0] if my_tid == 0 else [16000,9000]
-oase = [0,0] if my_tid == 1 else [16000,9000]
+oase = [1200,1200] if my_tid == 1 else [14800,7800]
 
 def getDist(pos_a,pos_b):
     return(math.sqrt(abs(pos_a[0]-pos_b[0])**2 + abs(pos_a[1]-pos_b[1])**2))
@@ -34,18 +34,20 @@ def getWeakest(goi,gost,buster):
     if len(slist) == 0:
         return(dict(d=dist_from,id=-1))
     else:
-        rid = slist.pop()
+        print(slist,file=sys.stderr)
+        rid = slist[0]
         state = goi[rid]['s']
+        dist_from = getDist(goi[rid]['pos'],buster['pos'])
         for gid in slist:
             dist_from_entity = getDist(goi[gid]['pos'],buster['pos'])
-            if dist_from_entity < 900 and gid not in gost:
+            if dist_from_entity <= 900 and gid not in gost:
                 del(goi[gid])
             else:
+                if state + 10 < goi[gid]['s']:
+                    return(dict(d=dist_from,id=rid))
                 if dist_from_entity < dist_from and buster['s'] != 1:
                     dist_from = dist_from_entity
                     rid = gid
-                if state + 10 < goi[gid]['s']:
-                    return(dict(d=dist_from,id=rid))
                 state = goi[gid]['s']
         return(dict(d=dist_from,id=rid))
 
@@ -58,9 +60,10 @@ def reduceStun(stun):
     print(stun,file=sys.stderr)
 
 def initPoi(poi):
-    for x in range(8):
-        for y in range(8):
-            poi[" ".join([str(i) for i in [x,y]])] = [x*2000+1000,y*1000+1000]
+    for x in range(17):
+        for y in range(10):
+            if (x + y > 4) and (x + y < 21):
+                poi[" ".join([str(i) for i in [x,y]])] = [x*1000,y*1000]
 
 #waypoinst to go through
 poi = dict()
@@ -69,6 +72,8 @@ initPoi(poi)
 stun = dict()
 #my busters
 bust = dict()
+#opponent busters
+oppo = dict()
 #my gosts of interest
 goi = dict()
 
@@ -77,8 +82,6 @@ turnNR = 0
 while True:
     #cound down stun counter
     reduceStun(stun)
-    #opponent busters
-    oppo = dict()
     #visible ghosts
     gost = dict()
     #assigned poi
@@ -119,7 +122,7 @@ while True:
         #print(poi,file=sys.stderr)
         oid = getClosest(oppo,bust[bid])
         #if possible to stun, then stun. Seems that it could be priority
-        if oid['id'] in oppo and bid not in stun and oid['id'] not in stun and oid['d'] <= 1760:
+        if oid['id'] in oppo and bid not in stun and oid['id'] not in stun and oid['d'] < 1760:
             print("STUN " + str(oid['id']))
             stun[bid] = 20
             stun[oid['id']] = 10
@@ -142,13 +145,15 @@ while True:
                     print("MOVE " + " ".join([str(x) for x in bust[tbid]['pos']]) + " SUP " + str(tbid) + " " + isStun)
                 else:
                     #now we should try to follow opponent with a ghost
-                    if oid['id'] in oppo and oppo[oid['id']]['s'] == 1 and oid['id'] not in stun and (bid not in stun or stun[bid] < getDist(oppo[oid['id']]['pos'],oase)/800):
+                    o_dist = getDist(oppo[oid['id']]['pos'],oase)/800 if oid['id'] in oppo else -1
+                    m_dist = getDist(bust[bid]['pos'],oase)/800
+                    if oid['id'] in oppo and oppo[oid['id']]['s'] == 1 and oid['id'] not in stun and (bid not in stun or stun[bid] < o_dist) and m_dist < o_dist:
                         if oid['d'] < 1760 and bid not in stun:
                             print("STUN " + str(oid['id']) + " S " + str(oid['id']))
                             stun[bid] = 20
                             goi[oppo[oid['id']]['v']] = dict(pos=oppo[oid['id']]['pos'],s=0,v=0)
                         else:
-                            print("MOVE " + " ".join([str(x) for x in oppo[oid['id']]['pos']]) + " O " + str(oid['id']) + " " + isStun)
+                            print("MOVE " + " ".join([str(x) for x in oase]) + " CATCH " + str(oid['id']) + " " + isStun)
                     else:
                         gid = getWeakest(goi,gost,bust[bid])
                         gid['b'] = bid
