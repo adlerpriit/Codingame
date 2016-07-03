@@ -58,9 +58,9 @@ sub getAvoidDest($$$) {
     my $angle_from_oppo = int(rad2deg(atan2($b->[1] - $a->[1], $b->[0] - $a->[0])));
     my $angle_from_base = int(rad2deg(atan2($b->[1] - $c->[1], $b->[0] - $c->[0])));
     my $sp = $d_ab + 799 - 2560;
-       $sp = ($sp > 0 ? $sp : 10); #this only happens if I cannot stun and have to risk running anyway
+       $sp = ($sp > 20 ? $sp : 20); #this only happens if I cannot stun and have to risk running anyway
     my $op_w = ($d_bc - $d_ac) / $d_ab;
-    my $deg_corr = int(((66/440) * $sp)); #$op_w
+    my $deg_corr = int(((90/440) * $sp)); #$op_w
     
     my $angle = $angle_from_oppo;
     #final angle to get
@@ -71,14 +71,10 @@ sub getAvoidDest($$$) {
     } else {
         $angle = (($angle_from_base > 45 and $angle_from_oppo > 0) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
     }
-    print STDERR $angle,"\n";
-    #$angle = ($angle <= 0 ? $angle + 180 : $angle - 180);
-    my $x = int(cos(deg2rad($angle)) * 800) + $b->[0];
-    my $y = int(sin(deg2rad($angle)) * 800) + $b->[1];
-    
-    
+    my $x = int(cos(deg2rad($angle)) * 850) + $b->[0];
+    my $y = int(sin(deg2rad($angle)) * 850) + $b->[1];
+        
     print STDERR "AVOID INFO: ",$angle_from_base,":",$angle_from_oppo,"(",$deg_corr,":",$angle,") angles with ",$sp," to spare and ",$op_w," weight\n";
-    print STDERR "DEST: ",$x," ",$y,"\n";
     if ($x < 0) {
         $y = ($a->[1] < $b->[1] ? $y - $x : $y + $x);
         $x = 0 ;
@@ -98,7 +94,7 @@ sub getAvoidDest($$$) {
 
 sub initPois() {
     my %pois = () ;
-    for my $x (0..9) {
+    for my $x (0..8) {
         for my $y (0..4) {
             if ($x+$y > 1 and $x+$y < 12) {
                 $pois{"$x $y"} = [$x*2000,$y*2250];
@@ -123,8 +119,24 @@ sub getVisOppo($$$) {
     return({'id'=>$r,'d'=>$d});
 }
 
-sub interceptOppo($$$$$) {
-    my ($oppo_ref,$ovis_ref,$gois_ref,$stun,$buster) = @_;
+sub getVisOppoAll($$$) {
+    my ($oppo_ref,$ovis_ref,$buster) = @_;
+    my $d = 2201;
+    my $r = undef;
+    for my $oid (keys%$ovis_ref) {
+        my $d_from = getDist($oppo_ref->{$oid}->{'p'},$buster->{'p'});
+        if ($d_from < $d) {
+        print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
+            $r = $oid;
+            $d = $d_from;
+        }
+    }
+    return({'id'=>$r,'d'=>$d});
+}
+
+
+sub interceptOppo($$$$$$) {
+    my ($oppo_ref,$ovis_ref,$gois_ref,$stun,$help_me_ref,$buster) = @_;
     return(undef) if $buster->{'s'} == 2 ;
     my @targets = () ;    #hunt opponents carrying a ghost
     my %dists = () ;
@@ -133,6 +145,12 @@ sub interceptOppo($$$$$) {
         push @targets, $oid if $oppo_ref->{$oid}{'s'} == 1;
         $dists{$oid}{'me'} = getDist($oppo_ref->{$oid}{'p'},$buster->{'p'});
         $dists{$oid}{'ob'} = getDist($oppo_ref->{$oid}{'p'},$oase);
+        for my $hbid (keys%$help_me_ref) {
+            if ($oid eq $help_me_ref->{$hbid}) {
+                print STDERR "GO GET ",$oid,"\n";
+                return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$oppo_ref->{$oid}{'p'}});
+            }
+        }
         if ($dists{$oid}{'me'} < 1760 and not defined($stun->{"B".$buster->{'id'}}) and not defined($stun->{$oid})) {
             unless ($buster->{'s'}==3 and $gois_ref->{"G".$buster->{'v'}}{'s'} > 6) {
                 print STDERR "STUN:",$oid," - ",$oppo_ref->{$oid}{'s'},"(",$dists{$oid}{'me'},")\n";
@@ -233,7 +251,7 @@ sub getPoi($$$) {
         }
     }
     $poi = ($poi ? $poi : $goi);
-    $apoi->{$poi} = "taken" if $poi;
+    $apoi->{$poi} = "taken" if $poi and $buster->{'s'} != 2 ;
     return($poi);
 }
 
@@ -267,6 +285,9 @@ my %oppo = ();
 
 my $pois = initPois();
 my %stun = ();
+my $busted_count = 0 ;
+my %help_me = ();
+print STDERR "Ghosts in play: ",$ghost_count,"\n";
 # game loop
 while (1) {
     reduceStun(\%stun);
@@ -274,6 +295,7 @@ while (1) {
     my %gvis = (); #visible ghosts
     my %ovis = (); #visible opponents
     my $apoi = {}; #allocated pois
+    my $carry_count = 0 ;
     chomp(my $entities = <STDIN>); # the number of busters and ghosts visible to you
     for my $i (0..$entities-1) {
         # entity_id: buster id or ghost id
@@ -285,6 +307,11 @@ while (1) {
         my ($eid, $x, $y, $etype, $state, $value) = split(/ /,$tokens);
         if ($etype == $myTID) {
             $team{"B".$eid} = {'id'=>$eid,'p'=>[$x,$y],'s'=>$state,'v'=>$value};
+            if ($state == 1) {
+                $carry_count += 1;
+            } elsif ($state != 1 and defined($help_me{"B".$eid})) {
+                delete($help_me{"B".$eid})
+            }
         } elsif ($etype == -1) {
             $gvis{"G".$eid} = "visible";
             $gois{"G".$eid} = {'id'=>$eid,'p'=>[$x,$y],'s'=>$state,'v'=>$value};
@@ -317,9 +344,12 @@ while (1) {
             my $d = getDist($base,$team{$bid}{'p'});
             if( $d < 1600) {
                 print("RELEASE".$isStun);
+                $busted_count += 1;
+                if (defined($help_me{$bid})) {delete($help_me{$bid})}
             } else {
                 my $oid = getVisOppo(\%oppo,\%ovis,$team{$bid});
                 if ($oid->{'id'}) {
+                    $help_me{$bid} = $oid->{'id'} ;
                     my $dist = getDist($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'});
                     if ($dist < 1760 and not defined($stun{$oid->{'id'}}) and not defined($stun{$bid})) {
                         print("STUN ".$oppo{$oid->{'id'}}{'id'}." S1 ".$oid->{'id'}.$isStun);
@@ -332,15 +362,27 @@ while (1) {
                         print("MOVE ".(join(" ",@$dest))." A ".$oid->{'id'}.$isStun);
                     }
                 } else {
+                    if (defined($help_me{$bid})) {delete($help_me{$bid})}
                     my $dest = getDest($base,$team{$bid}{'p'},1500);
+                    if ($ghost_count/2 <= $busted_count + $carry_count) {
+                        $oid = getVisOppoAll(\%oppo,\%ovis,$team{$bid});
+                        if ($oid) {
+                            $dest = getAvoidDest($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'},$base);
+                        } else {
+                            $dest = $team{$bid}{'p'} ;
+                        }
+                        print STDERR "WAITING/HIDING\n";
+                        $isStun = " not yet".$isStun;
+                    }
                     print("MOVE ".(join(" ",@$dest))." B".$isStun);
                 }
             }
             next;
         }
         #battle with opponent
-        my $oid = interceptOppo(\%oppo,\%ovis,\%gois,\%stun,$team{$bid});
-        if ($oid->{'id'}) {
+        my $oid = interceptOppo(\%oppo,\%ovis,\%gois,\%stun,\%help_me,$team{$bid});
+        my $gid = getWeakest(\%gois,\%gvis,$pois,$team{$bid});
+        if ($oid->{'id'} and (!$gid or $gid->{'s'} != 0)) {
             if ($oid->{'d'} < 1760 and not defined($stun{$bid}) and not defined($stun{$oid->{'id'}})) {
                 print("STUN ".$oppo{$oid->{'id'}}{'id'}." S2 ".$oid->{'id'}.$isStun);
                 $stun{$bid}{'t'} = 19;
@@ -355,7 +397,6 @@ while (1) {
             next;
         }
         #go for the weakest ghost
-        my $gid = getWeakest(\%gois,\%gvis,$pois,$team{$bid});
         #explore and get the weakest ghosts
         if ($poi and (!$gid or $gid->{'s'} > 10)) {
             print STDERR "POI: ",$poi,"\n";
