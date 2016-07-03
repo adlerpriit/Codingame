@@ -60,13 +60,15 @@ sub getAvoidDest($$$) {
     my $sp = $d_ab + 799 - 2560;
        $sp = ($sp > 20 ? $sp : 20); #this only happens if I cannot stun and have to risk running anyway
     my $op_w = ($d_bc - $d_ac) / $d_ab;
-    my $deg_corr = int(((90/440) * $sp)); #$op_w
+    my $deg_corr = int(((100/440) * $sp)); #$op_w
     
     my $angle = $angle_from_oppo;
     #final angle to get
     if($op_w < 0) {
         #opponent is further away from me
         #turn more toward base
+        $op_w = 1 + $op_w;
+        $deg_corr = int($deg_corr * $op_w);
         $angle = ($angle_from_oppo < $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))
     } else {
         $angle = (($angle_from_base > 45 and $angle_from_oppo > 0) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
@@ -111,7 +113,7 @@ sub getVisOppo($$$) {
     for my $oid (keys%$ovis_ref) {
         my $d_from = getDist($oppo_ref->{$oid}->{'p'},$buster->{'p'});
         if ($d_from < $d and $oppo_ref->{$oid}->{'s'} != 2) {
-        print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
+            print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
             $r = $oid;
             $d = $d_from;
         }
@@ -126,7 +128,7 @@ sub getVisOppoAll($$$) {
     for my $oid (keys%$ovis_ref) {
         my $d_from = getDist($oppo_ref->{$oid}->{'p'},$buster->{'p'});
         if ($d_from < $d) {
-        print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
+            print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
             $r = $oid;
             $d = $d_from;
         }
@@ -366,7 +368,7 @@ while (1) {
                     my $dest = getDest($base,$team{$bid}{'p'},1500);
                     if ($ghost_count/2 <= $busted_count + $carry_count) {
                         $oid = getVisOppoAll(\%oppo,\%ovis,$team{$bid});
-                        if ($oid) {
+                        if ($oid->{'id'}) {
                             $dest = getAvoidDest($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'},$base);
                         } else {
                             $dest = $team{$bid}{'p'} ;
