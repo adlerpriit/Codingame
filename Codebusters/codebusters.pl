@@ -189,7 +189,7 @@ sub getWeakest($$$$) {
             delete($gois_ref->{$gid});
         } else {
             #print STDERR "G '",sprintf("%3s",$gid),"' - ",$d_from,":",$gois_ref->{$gid}{'s'},"\n";
-            if ($s + 11 < $gois_ref->{$gid}{'s'} and defined($gois_ref->{$r})) {
+            if ($s + 5 < $gois_ref->{$gid}{'s'} and defined($gois_ref->{$r})) {
                 return({'id'=>$r,'d'=>$d,'s'=>$s});
             }
             if ($d_from < $d) {
