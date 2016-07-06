@@ -9,7 +9,7 @@ select(STDOUT); $| = 1; # DO NOT REMOVE
 # Send your busters out into the fog to trap ghosts and bring them home!
 chomp(my $busters_count = <STDIN>); # the amount of busters you control
 chomp(my $ghost_count = <STDIN>); # the amount of ghosts on the map
-chomp(my $myTID = <STDIN>); # if this is 0, your base is on the top left of the map, if it is one, on the bottom right
+chomp(our $myTID = <STDIN>); # if this is 0, your base is on the top left of the map, if it is one, on the bottom right
 our $base = ($myTID == 0 ? [0,0] : [16000,9000]);
 our $oase = ($myTID == 1 ? [0,0] : [16000,9000]);
 
@@ -52,15 +52,25 @@ sub getAvoidDest($$$) {
     #a is opponent position
     #b is my position
     #c is my base
+    
+    
+    #if time write expection here. that if opponent base is close than my base and $op_w > 0.5 move next to opponent and stun him
+    
     my $d_ab = getDist($a,$b) || 1;
     my $d_ac = getDist($a,$c);
     my $d_bc = getDist($b,$c);
+    my $d_bd = getDist($b,$oase);
     my $angle_from_oppo = int(rad2deg(atan2($b->[1] - $a->[1], $b->[0] - $a->[0])));
     my $angle_from_base = int(rad2deg(atan2($b->[1] - $c->[1], $b->[0] - $c->[0])));
     my $sp = $d_ab + 799 - 2560;
        $sp = ($sp > 20 ? $sp : 20); #this only happens if I cannot stun and have to risk running anyway
     my $op_w = ($d_bc - $d_ac) / $d_ab;
     my $deg_corr = int(((100/440) * $sp)); #$op_w
+    
+    if ($d_bd < $d_bc and $op_w > 0.8 and $sp < 140) {
+        print STDERR "Instead of avoid, attack or try get past\n";
+        return($a);
+    }
     
     my $angle = $angle_from_oppo;
     #final angle to get
@@ -69,9 +79,17 @@ sub getAvoidDest($$$) {
         #turn more toward base
         $op_w = 1 + $op_w;
         $deg_corr = int($deg_corr * $op_w);
-        $angle = ($angle_from_oppo < $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))
+        if ($myTID == 0) {
+            $angle = ($angle_from_oppo < $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))
+        } else {
+            $angle = ($angle_from_oppo > $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))            
+        }
     } else {
-        $angle = (($angle_from_base > 45 and $angle_from_oppo > 0) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
+        if ($myTID == 0) {
+            $angle = (($angle_from_base > 45 and $angle_from_oppo > 0) or (($angle_from_base < 45 and $angle_from_oppo < 0)) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
+        } else {
+            $angle = (($angle_from_base + 180 > 45 and $angle_from_oppo < 0) or (($angle_from_base + 180 < 45 and $angle_from_oppo > 0)) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));            
+        }
     }
     my $x = int(cos(deg2rad($angle)) * 850) + $b->[0];
     my $y = int(sin(deg2rad($angle)) * 850) + $b->[1];
@@ -279,6 +297,16 @@ sub updateInvisibleOppo($$) {
     }
 }
 
+sub updateVisibleGois($$$) {
+    my ($gois_ref,$gvis_ref,$buster) = @_;
+    for my $gid (keys%$gvis_ref) {
+        my $d_from = getDist($gois_ref->{$gid}{'p'}, $buster->{'p'});
+        if ($d_from > 1800 and $d_from <= 2200) {
+            $gois_ref->{$gid}{'p'} = getDest($buster->{'p'},$gois_ref->{$gid}{'p'},$d_from + 400)
+        }
+    }
+}
+
 my $tokens;
 
 my %gois = ();
@@ -365,16 +393,22 @@ while (1) {
                     }
                 } else {
                     if (defined($help_me{$bid})) {delete($help_me{$bid})}
-                    my $dest = getDest($base,$team{$bid}{'p'},1500);
-                    if ($ghost_count/2 <= $busted_count + $carry_count) {
+                    my $dest = getDest($base,$team{$bid}{'p'},1590);
+                    if (int($ghost_count/2) <= $busted_count + $carry_count) {
                         $oid = getVisOppoAll(\%oppo,\%ovis,$team{$bid});
                         if ($oid->{'id'}) {
                             $dest = getAvoidDest($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'},$base);
                         } else {
-                            $dest = $team{$bid}{'p'} ;
+                            my $d_a = getDist($team{$bid}{'p'},[12000,9000]);
+                            my $d_b = getDist($team{$bid}{'p'},[16000,5000]);
+                            $dest = ($d_a < $d_b ? [10000,9000] : [16000,3000]) ;
+                            #$dest = $team{$bid}{'p'} ;
                         }
                         print STDERR "WAITING/HIDING\n";
                         $isStun = " not yet".$isStun;
+                    }
+                    if ($d < 4799 and $d > 4000) {
+                        $dest = getDest($base,$team{$bid}{'p'},3999);
                     }
                     print("MOVE ".(join(" ",@$dest))." B".$isStun);
                 }
@@ -392,6 +426,7 @@ while (1) {
                 $stun{$oid->{'id'}}{'id'} = $bid;
                 if ($oppo{$oid->{'id'}}{'s'} == 1) {
                     $gois{"G".$oppo{$oid->{'id'}}{'v'}} = {'id'=>$oppo{$oid->{'id'}}{'v'},'p'=>$oppo{$oid->{'id'}}{'p'},'s'=>0,'v'=>0};
+                    $gvis{"G".$oppo{$oid->{'id'}}{'v'}} = "added" ;
                 }
             } else {
                 print("MOVE ".join(" ",@{$oid->{'dest'}})." O ".$oid->{'id'}.$isStun);
@@ -420,6 +455,7 @@ while (1) {
             my $dest = getDest($oase,$team{$bid}{'p'},1600);
             print("MOVE ".(join(" ",@$dest))." EOL".$isStun);
         }
+        updateVisibleGois(\%gois,\%gvis,$team{$bid});
     }
     updateInvisibleOppo(\%oppo,\%ovis);
 }
