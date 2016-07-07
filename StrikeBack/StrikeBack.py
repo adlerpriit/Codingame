@@ -22,11 +22,24 @@ def project(pos_last,pos,dist,target):
     point_b = getDest(point_a,target,2*d_dist)
     return(point_b)
 
+def getNextTarget(track,next_key,last_key):
+    sorted_track = sorted(track,key=lambda x: track[x]['n'])
+    lenght_track = len(sorted_track)
+    currentN = track[next_key]['n']
+    if currentN == lenght_track:
+        currentN = 0
+    if sorted_track[currentN] == last_key:
+        return(track[next_key]['pos'])
+    else:
+        return(track[sorted_track[currentN]]['pos'])
+
 prev = dict()
 track = dict()
 
 boost = 1
 N = 1
+last_key = None
+
 # game loop
 while True:
     # next_checkpoint_x: x position of the next check point
@@ -36,39 +49,44 @@ while True:
     x, y, next_x, next_y, next_dist, angle = [int(i) for i in input().split()]
     o_x, o_y = [int(i) for i in input().split()]
 
-    if 'dist' in prev:
-        print([prev['dist'] - next_dist,prev['a']-angle],file=sys.stderr)
 
     #thrust equals abs(angls)
     print([next_dist,angle],file=sys.stderr)
+
+    if 'dist' in prev:
+        print([prev['dist'] - next_dist,prev['a']-angle,prev['key']],file=sys.stderr)
 
     nX = next_x
     nY = next_y
     angle_limit = 100 if abs(angle) >= 90 else 0
 
+
     next_key = ":".join([str(i) for i in [next_x,next_y]])
+    if 'key' in prev and prev['key'] != next_key:
+        last_key = prev['key']
+        print("Cleared checkpoint " + str(track[last_key]['n']),file=sys.stderr)
     if next_key not in track:
         track[next_key] = {'pos':[next_x,next_y],'n':N}
         N+=1
-    else:
+    #else:
         #may start to plot better course as we have explored entire lap
         #there are several aspects, we can speed up getting through checkpoints, by altering target coordinate
         #by same margin to the other side that is projected by heading line.
+    if 'pos' in prev:
         speed = getDist(prev['pos'],[x,y])
-        #here is where I'm left.. 
-        
-    if abs(angle) < 90 and 'pos' in prev:
-        target = project(prev['pos'],[x,y],next_dist,[nX,nY])
-        angle_limit = angle**4 * 90 / 90**4
-        nX = target[0]
-        nY = target[1]
+        if next_dist < speed * 4:
+            nX,nY = getNextTarget(track,next_key,last_key)
+        if abs(angle) < 90:
+            nX,nY = project(prev['pos'],[x,y],getDist([x,y],[nX,nY]),[nX,nY])
+            angle_limit = angle**4 * 90 / 90**4
+
 
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr)    
 
-    print([angle_limit,dist_limit],file=sys.stderr)
+    print("speed correction: " + str(angle_limit),file=sys.stderr)
 
-    thrust = 100 - int(angle_limit) - int(dist_limit)
+    thrust = 100 - int(angle_limit)
     
     thrust = 0 if thrust < 0 else thrust
     
@@ -81,4 +99,4 @@ while True:
     # followed by the power (0 <= thrust <= 100)
     # i.e.: "x y thrust"
     print(str(nX) + " " + str(nY) + " " + str(thrust))
-    prev = {'a':angle,'pos':[x,y],'dist':next_dist}
+    prev = {'a':angle,'pos':[x,y],'dist':next_dist,'key':next_key}
