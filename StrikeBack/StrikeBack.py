@@ -111,11 +111,9 @@ while True:
         
         print([nextTarget,angle,nextAngle],file=sys.stderr)
         
-        if abs(angle) < 90:
+        if abs(angle) < 120:
             nX,nY = project(prev['pos'],[x,y],getDist([x,y],[next_x,next_y]),[nX,nY])
-            angle_limit = angle**6 * 90 / 90**6
-            print("speed correction: " + str(angle_limit),file=sys.stderr)
-            thrust = 100 - int(angle_limit)
+            thrust = 100
         else:
             thrust = 0
         
