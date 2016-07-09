@@ -16,36 +16,29 @@ def getDest(pos_a,pos_b,dist):
     y = pos_a[1] - dist * (pos_a[1]-pos_b[1])/d_ab
     return([x,y])
 
-def project(pos_last,pos,dist,target):
-    d_speed = getDist(pos_last,pos)
-    point_a = getDest(pos_last,pos,dist+d_speed)
+def project(pos,next_pos,dist,target):
+    point_a = getDest(pos,next_pos,dist)
     d_dist = getDist(point_a,target)
-    point_b = getDest(point_a,target,2*d_dist)
+    point_b = getDest(point_a,target,2.5*d_dist)
     return(point_b)
 
-def getNextTarget(pos,track,next_key):
-    next_cp = [int(i) for i in next_key.split(":")]
-    if next_key not in track:
-        next_angle = getAngle([pos,next_cp],[[8000,4500],next_cp])
-        next_angle = 180 - next_angle
-        if next_angle > 85:
-            return([8000,4500],next_angle)
-        else:
-            return(next_cp,next_angle)
-    sorted_track = sorted(track,key=lambda x: track[x]['n'])
-    lenght_track = len(sorted_track)
-    currentN = track[next_key]['n']
-    if currentN == lenght_track:
-        currentN = 0
-    print("Targeting: ",str(currentN+1),file=sys.stderr)
-    target_cp = [int(i) for i in sorted_track[currentN].split(":")]
-    target_angle = getAngle([pos,next_cp],[target_cp,next_cp])
-    return(target_cp,180 - target_angle)
+def getNextTarget(track,pod):
+    next_cpid = pod['N'] + 1
+    if next_cpid >= race_cps:
+        next_cpid -= race_cps
+    next_cp = track[next_cpid]
+    curr_cp = track[pod['N']]
+    print("Targeting: ",str(next_cpid),file=sys.stderr)
+    #angle between my accelaration direction and next target
+    next_angle = deltaAngle(getAngleAbs(pod['pos'],next_cp),pod['angle'])
+    return(next_cp,next_angle)
 
-def stillWithInLast(pos,last_key):
-    last_cp = [int(i) for i in last_key.split(":")]
-    last_dist = getDist(pos,last_cp)
-    return(True if last_dist < 600 else False)
+def stillWithInLast(track,pod):
+    last_cpid = pod['N'] - 1
+    if last_cpid < 0:
+        last_cpid = race_cps - 1
+    last_dist = getDist(pod['pos'],track[last_cpid])
+    return(True if last_dist < 1000 else False)
 
 def getAngle(vec_a,vec_b):
     #get angle between two vectors relative to vector a
@@ -58,80 +51,86 @@ def getAngle(vec_a,vec_b):
     dot_ab = 1 if dot_ab > 1 else -1 if dot_ab < -1 else dot_ab
     return(math.degrees(math.acos(dot_ab)))
 
-prev = dict()
+def getAngleAbs(pos,target):
+    alpha = math.degrees(math.atan2(target[1]-pos[1],target[0]-pos[0]))
+    if alpha < 0:
+        alpha += 360
+    return(alpha)
+
+def deltaAngle(alpha,beta):
+    phi = abs(beta - alpha) % 360
+    return(phi if phi < 180 else 360 - phi)
+    
+
 track = dict()
+mpods = dict()
+opods = dict()
 
 boost = 1
-N = 1
-last_key = dict()
 
+#geme information
+race_laps = int(input())
+race_cps = int(input())
+for cp in range(race_cps):
+    cp_x,cp_y = [int(i) for i in input().split()]
+    track[cp] = [cp_x,cp_y]
+
+turn = 0
+lap = 0
 # game loop
 while True:
-    # next_checkpoint_x: x position of the next check point
-    # next_checkpoint_y: y position of the next check point
-    # next_checkpoint_dist: distance to the next checkpoint
-    # next_checkpoint_angle: angle between your pod orientation and the direction of the next checkpoint
-    x, y, next_x, next_y, next_dist, angle = [int(i) for i in input().split()]
-    o_x, o_y = [int(i) for i in input().split()]
+    for pid in range(2):
+        x,y,vx,vy,angle,next_cpid = [int(i) for i in input().split()]
+        mpods[pid] = {'pos':[x,y],'next_pos':[x+vx,y+vy],'angle':angle,'N':next_cpid,'speed':getDist([0,0],[vx,vy])}
+        #print(mpods[pid],file=sys.stderr)
+    for oid in range(2):
+        x,y,vx,vy,angle,next_cpid = [int(i) for i in input().split()]
+        opods[oid] = {'pos':[x,y],'next_pos':[x+vx,y+vy],'angle':angle,'N':next_cpid,'speed':getDist([0,0],[vx,vy])}
 
-    #thrust equals abs(angls)
-    #print([next_dist,angle],file=sys.stderr)
-
-    nX = next_x
-    nY = next_y
     thrust = 100
-
-    next_key = ":".join([str(i) for i in [next_x,next_y]])
-    if 'key' in prev and prev['key'] not in track and prev['key'] != next_key :
-        #learn track and it's checkpoints locations
-        track[prev['key']] = {'n':N}
-        N+=1
-    if 'pos' in prev:
-        #my speed
-        speed = getDist(prev['pos'],[x,y])
-        #opponent speed
-        op_speed = getDist(prev['op_pos'],[o_x,o_y])
-        #angle between my pod and opponents pod
-        op_angle = getAngle([[x,y],prev['pos']],[[o_x,o_y],prev['op_pos']])
-        #projection wether we'll be collading in next turn. collision == delta_me_op < 800
-        delta_me_op = getDist(getDest(prev['pos'],[x,y],2*speed),getDest(prev['op_pos'],[o_x,o_y],2*op_speed))
-
-        print([delta_me_op,op_speed,op_angle],file=sys.stderr)
-
-        #nextTarget is next checkpoint if known or middle of the map if checkpoint is not known and agle is steep enough
-        nextTarget,nextAngle = getNextTarget([x,y],track,next_key)
-
-        #aim for the other side of the checkpoint relative to nextTarget: THIS SEEMS BUGGY
-        #nX,nY = getDest(nextTarget,[next_x,next_y],getDist(nextTarget,[next_x,next_y])+200)
-
-        if next_dist / speed < 4.5 and getDist(getDest(prev['pos'],[x,y],next_dist+speed),[next_x,next_y]) < 555:
-            #if I'm close enough to checkpoint start plotting course toward next poi already.
-            nX,nY = nextTarget
-            angle = nextAngle
+    for pid in range(2):
+        pod = mpods[pid]
+        current_cp = track[pod['N']]
+        nX,nY = current_cp
+        angle = deltaAngle(getAngleAbs(pod['pos'],current_cp),pod['angle'])
+        current_dist = getDist(pod['pos'],current_cp)
+        next_cp,next_angle = getNextTarget(track,pod)
+        print([current_cp,current_dist,angle,":",next_cp,next_angle],file=sys.stderr)
+        if current_dist < pod['speed'] * 4.5 and getDist(getDest(pod['pos'],pod['next_pos'],current_dist),current_cp) < 555:
+            #if I'm close enough to checkpoint
+            nX,nY = next_cp
+            angle = next_angle
+            print("Close enough to CP",file=sys.stderr)
         
-        print([nextTarget,angle,nextAngle],file=sys.stderr)
-        
-        if abs(angle) < 120:
-            nX,nY = project(prev['pos'],[x,y],getDist([x,y],[next_x,next_y]),[nX,nY])
+        if angle < 105 or turn < 3:
+            nX,nY = project(pod['pos'],pod['next_pos'],current_dist,[nX,nY])
             thrust = 100
         else:
             thrust = 0
         
-        if delta_me_op < 800 and (op_angle > 120 or next_dist / speed < 4.5 or stillWithInLast([x,y],prev['key'])):
-            thrust = "SHIELD"
-        
-        if delta_me_op < 1800 and op_angle > 160 and boost > 0:
+        delta_op = 999999
+        angle_op = 0
+        which_op = -1
+        for oid in range(2):
+            opod = opods[oid]
+            delta_op_tmp = getDist(pod['next_pos'],opod['next_pos'])
+            if delta_op_tmp < delta_op:
+                delta_op = delta_op_tmp
+                angle_op = getAngle([pod['next_pos'],pod['pos']],[opod['next_pos'],opod['pos']])
+                which_op = oid
+        print("Collision info: " + str(which_op) + " - " + str(int(delta_op)) + ":" + str(int(angle_op)),file=sys.stderr)
+        if delta_op < 800:
+            if angle_op > 90 or current_dist < pod['speed'] * 4.5 or stillWithInLast(track,pod):
+                thrust = "SHIELD"
+        if pid == 0 and turn == 1:
+            thrust = "BOOST"
+        if pid == 1 and angle < 2 and isinstance(thrust, int) and current_dist > 6000 and boost == 1:
             thrust = "BOOST"
             boost -= 1
+        
+        print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust))
+    turn += 1
+    #     if delta_me_op < 800 and op_angle > 160 and boost > 0:
+    #         thrust = "BOOST"
+    #         boost -= 1
 
-    # Write an action using print
-    # To debug: print("Debug messages...", file=sys.stderr)    
-    
-    if next_dist > 7000 and boost > 0 and angle == 0 and isinstance(thrust, int):
-        thrust = "BOOST"
-        boost -= 1
-    # You have to output the target position
-    # followed by the power (0 <= thrust <= 100)
-    # i.e.: "x y thrust"
-    print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust))
-    prev = {'pos':[x,y],'op_pos':[o_x,o_y],'dist':next_dist,'key':next_key}
