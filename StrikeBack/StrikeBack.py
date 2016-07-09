@@ -19,7 +19,7 @@ def getDest(pos_a,pos_b,dist):
 def project(pos,next_pos,dist,target):
     point_a = getDest(pos,next_pos,dist)
     d_dist = getDist(point_a,target)
-    point_b = getDest(point_a,target,2.5*d_dist)
+    point_b = getDest(point_a,target,1.8*d_dist)
     return(point_b)
 
 def getNextTarget(track,pod):
@@ -38,14 +38,12 @@ def stillWithInLast(track,pod):
     if last_cpid < 0:
         last_cpid = race_cps - 1
     last_dist = getDist(pod['pos'],track[last_cpid])
-    return(True if last_dist < 1000 else False)
+    return(True if last_dist < 666 else False)
 
 def getAngle(vec_a,vec_b):
     #get angle between two vectors relative to vector a
-    norm_a = [vec_a[1][0]-vec_a[0][0],vec_a[1][1]-vec_a[0][1]]
-    norm_a = getDest([0,0],norm_a,1)
-    norm_b = [vec_b[1][0]-vec_b[0][0],vec_b[1][1]-vec_b[0][1]]
-    norm_b = getDest([0,0],norm_b,1)
+    norm_a = getDest([0,0], [vec_a[1][0]-vec_a[0][0],vec_a[1][1]-vec_a[0][1]], 1)
+    norm_b = getDest([0,0], [vec_b[1][0]-vec_b[0][0],vec_b[1][1]-vec_b[0][1]], 1)
     dot_ab = norm_a[0]*norm_b[0] + norm_a[1]*norm_b[1]
     #print([dot_ab],file=sys.stderr)
     dot_ab = 1 if dot_ab > 1 else -1 if dot_ab < -1 else dot_ab
@@ -65,8 +63,7 @@ def deltaAngle(alpha,beta):
 track = dict()
 mpods = dict()
 opods = dict()
-
-boost = 1
+mprev = {0:{'lap':1,'N':1},1:{'lap':1,'N':1}}
 
 #geme information
 race_laps = int(input())
@@ -76,17 +73,27 @@ for cp in range(race_cps):
     track[cp] = [cp_x,cp_y]
 
 turn = 0
-lap = 0
+prox_constant = 5.25
 # game loop
 while True:
     for pid in range(2):
         x,y,vx,vy,angle,next_cpid = [int(i) for i in input().split()]
+        #vx = int(vx * 1.1765)
+        #vy = int(vy * 1.1765)
         mpods[pid] = {'pos':[x,y],'next_pos':[x+vx,y+vy],'angle':angle,'N':next_cpid,'speed':getDist([0,0],[vx,vy])}
-        #print(mpods[pid],file=sys.stderr)
+        if next_cpid == 1 and next_cpid != mprev[pid]['N']:
+            #we are on new lap
+            mprev[pid]['lap'] += 1
+        print(mpods[pid],file=sys.stderr)
+        mprev[pid]['N'] = next_cpid
+        #print(mprev,file=sys.stderr)
     for oid in range(2):
         x,y,vx,vy,angle,next_cpid = [int(i) for i in input().split()]
+        #vx = int(vx * 1.1765)
+        #vy = int(vy * 1.1765)
         opods[oid] = {'pos':[x,y],'next_pos':[x+vx,y+vy],'angle':angle,'N':next_cpid,'speed':getDist([0,0],[vx,vy])}
-
+        print(mpods[pid],file=sys.stderr)
+    
     thrust = 100
     for pid in range(2):
         pod = mpods[pid]
@@ -96,21 +103,24 @@ while True:
         current_dist = getDist(pod['pos'],current_cp)
         next_cp,next_angle = getNextTarget(track,pod)
         print([current_cp,current_dist,angle,":",next_cp,next_angle],file=sys.stderr)
-        if current_dist < pod['speed'] * 4.5 and getDist(getDest(pod['pos'],pod['next_pos'],current_dist),current_cp) < 555:
+        if current_dist < pod['speed'] * prox_constant and getDist(getDest(pod['pos'],pod['next_pos'],current_dist),current_cp) < 535:
             #if I'm close enough to checkpoint
             nX,nY = next_cp
             angle = next_angle
             print("Close enough to CP",file=sys.stderr)
         
-        if angle < 105 or turn < 3:
+        if angle < 105:
             nX,nY = project(pod['pos'],pod['next_pos'],current_dist,[nX,nY])
-            thrust = 100
+            thrust = 100 - int(angle**4 * 100 / 105**4)
         else:
             thrust = 0
+        
+        #check my other pod and if collision (in two) the one who is further behind will drop throttle
         
         delta_op = 999999
         angle_op = 0
         which_op = -1
+        speed_op = -1
         for oid in range(2):
             opod = opods[oid]
             delta_op_tmp = getDist(pod['next_pos'],opod['next_pos'])
@@ -118,19 +128,16 @@ while True:
                 delta_op = delta_op_tmp
                 angle_op = getAngle([pod['next_pos'],pod['pos']],[opod['next_pos'],opod['pos']])
                 which_op = oid
+                speed_op = opod['speed']
         print("Collision info: " + str(which_op) + " - " + str(int(delta_op)) + ":" + str(int(angle_op)),file=sys.stderr)
-        if delta_op < 800:
-            if angle_op > 90 or current_dist < pod['speed'] * 4.5 or stillWithInLast(track,pod):
+        if delta_op < 800 and speed_op > pod['speed']:
+            if angle_op > 90 or current_dist < pod['speed'] * prox_constant or stillWithInLast(track,pod):
                 thrust = "SHIELD"
+        if turn < 1:
+            thrust = 100
         if pid == 0 and turn == 1:
             thrust = "BOOST"
-        if pid == 1 and angle < 2 and isinstance(thrust, int) and current_dist > 6000 and boost == 1:
+        if pid == 1 and angle < 2 and isinstance(thrust, int) and 'lap' in mprev[pid] and mprev[pid]['lap'] == race_laps and pod['N'] == 0:
             thrust = "BOOST"
-            boost -= 1
-        
         print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust))
     turn += 1
-    #     if delta_me_op < 800 and op_angle > 160 and boost > 0:
-    #         thrust = "BOOST"
-    #         boost -= 1
-
