@@ -236,6 +236,14 @@ while True:
 #First to make some pen and paper action. Also some testing
 
 #test actual speed, this can also be calculated: speed_vector + angle[corrected, max diff 18°]*thust
+#max straight speed is 1327 ... takes 36 turns to achieve
+#stable turn speed is 1276 ... from max speed it takes 17 turns to get
+
 #from the speed and angle max correction we can calculate circle radius
+#half a circle with 10 coordinate points and assuming stable turn speed (1276), the arc diameter at ends is 8054. radius to 90° sector midpoint is 3389. this arc enables to enter 0° and exit at 180°. though as it is so wide, it probably is not worth to try to take the checkpoints at full speed.
+#also should check, probably takes less turns and less time to get through checkpoint if lowering speed.
+
 #tricky part is to find the entry and exit points the to the circle.
-#but basically if reached entry point, aim for the exit point and pod will follow the circle
+#but basically if reached entry point, aim for the center point and pod will follow the circle
+
+#calculating the circle is still tricky. It should take into account my speed, distance from checkpoint, angle between me, checkpoint and next checkpoint. dynamically correct the arc entry point, and my speed
