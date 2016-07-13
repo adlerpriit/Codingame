@@ -140,7 +140,7 @@ while True:
     
     rank = getRank(mpods,opods,track)
     for pid in range(2):
-        thrust = 100
+        thrust = 200
         pod = mpods[pid]
 
         next_cp,next_angle,cvsn_angle = getNextTarget(track,pod)
@@ -206,8 +206,8 @@ while True:
             x,y = opod['pos']
             vx,vy = opod['sp_vec']
             angle_op = opod['angle']
-            x = x + vx + int(math.cos(math.radians(angle_op)) * 100)
-            y = y + vy + int(math.sin(math.radians(angle_op)) * 100)
+            x = x + vx + int(math.cos(math.radians(angle_op)) * 200)
+            y = y + vy + int(math.sin(math.radians(angle_op)) * 200)
             opod_next_pos = [x,y]
             delta_op_tmp = getDist(next_pos,opod_next_pos)
             if delta_op_tmp < delta_op:
@@ -219,8 +219,8 @@ while True:
         if delta_op < 800:
             if angle_op < 90:
                 nX,nY = colli_op
-                thrust = 100
-            elif angle_op > 90 and speed > 185:
+                thrust = 200
+            elif angle_op > 90 and speed > 300:
                 thrust = "SHIELD"
         if turn < 1:
             thrust = 100
@@ -230,3 +230,12 @@ while True:
             thrust = "BOOST"
         print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust) + " " + str(mprev[pid]['lap']) + ":" + str(pod['N']))
     turn += 1
+
+
+#Some notes here
+#First to make some pen and paper action. Also some testing
+
+#test actual speed, this can also be calculated: speed_vector + angle[corrected, max diff 18°]*thust
+#from the speed and angle max correction we can calculate circle radius
+#tricky part is to find the entry and exit points the to the circle.
+#but basically if reached entry point, aim for the exit point and pod will follow the circle
