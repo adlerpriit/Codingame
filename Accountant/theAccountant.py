@@ -66,32 +66,30 @@ def getMySafeDest(me,ref,oppo,data):
             return(getMySafeDest(myD,ref,oppo,data))
     return(me)
 
-def angleDest(ref,angle,delta):
+def angleDest(ref,angle):
     x,y = ref
+    delta = 2680
     x = x + int(math.cos(math.radians(angle)) * delta)
     y = y + int(math.sin(math.radians(angle)) * delta)
     return([x,y])
 
-def getAngleDest(pos_a,ref,alpha,delta):
-    opt_a = angleDest(pos_a,alpha+50,delta)
-    opt_b = angleDest(pos_a,alpha-50,delta)
+def getAngleDest(pos_a,ref,alpha):
+    opt_a = angleDest(pos_a,alpha+50)
+    opt_b = angleDest(pos_a,alpha-50)
     if dist(opt_a,ref) <= dist(opt_b,ref):
         return(opt_a)
     else:
         return(opt_b)
 
-def getIntercept(me,dat,DP,pos,N,Cost,T,dd):
+def getIntercept(me,dat,DP,pos,N,Cost,T):
     #print([dist(me,pos),N],file=sys.stderr)
     mDist = dist(me,pos)
-    if mDist < 2180 or N >= 120 / oppo_count or DP == None or T != None:
-        T = me if T == None else T
+    if mDist < 2180 or N >= 120 / oppo_count or DP == None:
         return(N,Cost,T)
     else:
         opA2nD = angle(pos,dat[DP]['pos'])
-        myD = getAngleDest(pos,me,opA2nD,dd)
-        myT = int(dist(me,myD)/1000)
-        print(['debug:',myT,N],file=sys.stderr)
-        if myT <= N:
+        myD = getAngleDest(pos,me,opA2nD)
+        if int(dist(me,myD)/1000) == N:
             T = myD
         tD = dist(dat[DP]['pos'],pos)
         tD = 500 if tD > 500 else tD
@@ -100,7 +98,7 @@ def getIntercept(me,dat,DP,pos,N,Cost,T,dd):
             del(dat[DP])
             Cost+=1
         nextDP, d2nextDP = getNextDP(dat,nextPos)
-        return(getIntercept(me,dat,nextDP,nextPos,N+1,Cost,T,dd))
+        return(getIntercept(me,dat,nextDP,nextPos,N+1,Cost,T))
 
 # Shoot enemies before they collect all the incriminating data!
 # The closer you are to an enemy, the more damage you do but don't get too close or you'll get killed.
@@ -125,24 +123,23 @@ while True:
         nextPos = dest([oppo_x,oppo_y],data[nextDP]['pos'],d2nextPos)
         nextD = dist(me,nextPos)
         dCopy = copy.deepcopy(data)
-        dd = getDamDist(oppo_life)
-        dd = 2145 if dd < 2145 else dd
-        danger,cost,myD = getIntercept(me,dCopy,nextDP,nextPos,1,0,None,dd)
-        print([oppo_id,danger,cost,myD],file=sys.stderr)
-        if nextD <= dd: myD = me
-        if nextD < minDfromO: minDfromO = nextD
+        danger,cost,myD = getIntercept(me,dCopy,nextDP,nextPos,1,0,None)
+        if nextD < minDfromO:
+            minDfromO = nextD
         oppo[oppo_id] = {
             'pos':nextPos,
             'hp':oppo_life,
             'd':nextD,
             'nD':nextDP,
-            'dd':dist(me,myD)/1000,
+            'dd':(nextD - getDamDist(oppo_life))/1000,
             'dd2':(nextD - getDamDist(oppo_life/2+0.5))/1000,
+            'dd3':(nextD - getDamDist(oppo_life/3+0.5))/1000,
             'tnD':d2nextDP/500,
             'danger':danger,
-            'cost':round(20 - (cost/data_count) * 20,1),
+            'cost':round(15 - (cost/(5 if data_count > 5 else data_count)) * 15,1),
             'myD':myD}
     
+    # round(15 - (cost/data_count) * 15,1)
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr)
     #print(oppo,file=sys.stderr)
@@ -154,7 +151,7 @@ while True:
 
     for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
         op = oppo[oid]
-        print([oid,op['sc'],op['dd'],op['cost'],op['danger'],op['tnD']],file=sys.stderr)
+        print([oid,op['sc'],op['dd'],op['dd2'],op['cost'],op['danger'],op['tnD']],file=sys.stderr)
 
 
     for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
@@ -162,16 +159,16 @@ while True:
         if minDfromO < 2000:
             myD = getMySafeDest(me,me,oppo,data)
             print("MOVE " + " ".join([str(nr) for nr in myD]))
-        elif  oppo[oid]['dd'] <= 0:
+        elif  oppo[oid]['dd'] < 0:
             print("SHOOT " + str(oid))
-        elif oppo[oid]['hp'] > 13 and getDam(oppo[oid]['d']) > 9:
+        elif oppo[oid]['hp'] > 10 and getDam(oppo[oid]['d']) > 9:
             print("SHOOT " + str(oid))
         elif oppo[oid]['dd2'] < 0 and oppo[oid]['tnD'] - oppo[oid]['dd'] < 1 and data[oppo[oid]['nD']]['w'] == oppo[oid]['tnD']:
             print("SHOOT " + str(oid))
         else:
             opA2nD = angle(oppo[oid]['pos'],data[oppo[oid]['nD']]['pos'])
             #need to figure out my dest formula.. atm it's not so good.. also need to think a bit more about movement
-            myD = oppo[oid]['myD']
+            myD = oppo[oid]['myD'] or getAngleDest(oppo[oid]['pos'],me,opA2nD)
             if dist(me,myD) > 1001:
                 myD = dest(me,myD,1001)
             myD = getMySafeDest(myD,me,oppo,data)
