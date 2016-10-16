@@ -1,5 +1,6 @@
 import sys
 import math
+import copy
 
 def dist(a,b):
     i,j = a
@@ -50,32 +51,56 @@ def getNextDP(data,pos):
         if tD < mD:
             mD = tD
             mID = dID
-    data[mID]['w'] += mD/500
+    if mID in data:
+        data[mID]['w'] += mD/500
     return(mID,mD)
 
-def getMySafeDest(me,oppo,data):
+def getMySafeDest(me,ref,oppo,data):
     for oid in oppo:
-        if dist(me,oppo[oid]['pos']) <= 2010:
+        if dist(me,oppo[oid]['pos']) < 2000:
             #opA2nD = angle(oppo[oid]['pos'],data[oppo[oid]['nD']]['pos'])
             #myD = getAngleDest(oppo[oid]['pos'],me,opA2nD)
-            myD = dest(oppo[oid]['pos'],me, 2700)
-            return(getMySafeDest(myD,oppo,data))
+            myD = dest(oppo[oid]['pos'],me, 2680)
+            if dist(ref,myD) > 1001:
+                myD = dest(ref,myD,1001)
+            return(getMySafeDest(myD,ref,oppo,data))
     return(me)
 
-def angleDest(ref,angle):
+def angleDest(ref,angle,delta):
     x,y = ref
-    delta = 2700
     x = x + int(math.cos(math.radians(angle)) * delta)
     y = y + int(math.sin(math.radians(angle)) * delta)
     return([x,y])
 
-def getAngleDest(pos_a,ref,alpha):
-    opt_a = angleDest(pos_a,alpha+45)
-    opt_b = angleDest(pos_a,alpha-45)
+def getAngleDest(pos_a,ref,alpha,delta):
+    opt_a = angleDest(pos_a,alpha+50,delta)
+    opt_b = angleDest(pos_a,alpha-50,delta)
     if dist(opt_a,ref) <= dist(opt_b,ref):
         return(opt_a)
     else:
         return(opt_b)
+
+def getIntercept(me,dat,DP,pos,N,Cost,T,dd):
+    #print([dist(me,pos),N],file=sys.stderr)
+    mDist = dist(me,pos)
+    if mDist < 2180 or N >= 120 / oppo_count or DP == None or T != None:
+        T = me if T == None else T
+        return(N,Cost,T)
+    else:
+        opA2nD = angle(pos,dat[DP]['pos'])
+        myD = getAngleDest(pos,me,opA2nD,dd)
+        myT = int(dist(me,myD)/1000)
+        print(['debug:',myT,N],file=sys.stderr)
+        if myT <= N:
+            T = myD
+        tD = dist(dat[DP]['pos'],pos)
+        tD = 500 if tD > 500 else tD
+        nextPos = dest(pos,dat[DP]['pos'],tD)
+        if tD < 500:
+            del(dat[DP])
+            Cost+=1
+        nextDP, d2nextDP = getNextDP(dat,nextPos)
+        return(getIntercept(me,dat,nextDP,nextPos,N+1,Cost,T,dd))
 
 # Shoot enemies before they collect all the incriminating data!
 # The closer you are to an enemy, the more damage you do but don't get too close or you'll get killed.
@@ -90,47 +115,65 @@ while True:
     minDfromO = 18358
     for i in range(data_count):
         data_id, data_x, data_y = [int(j) for j in input().split()]
-        data[data_id] = {'pos':[data_x,data_y],'d':dist(me,[data_x,data_y]),'w':0}
+        data[data_id] = {'pos':[data_x,data_y],'d':dist(me,[data_x,data_y]),'w':0,'opd':[]}
     oppo_count = int(input())
     for i in range(oppo_count):
         oppo_id, oppo_x, oppo_y, oppo_life = [int(j) for j in input().split()]
         nextDP, d2nextDP = getNextDP(data,[oppo_x,oppo_y])
         d2nextPos = 500 if d2nextDP > 500 else d2nextDP
+        
         nextPos = dest([oppo_x,oppo_y],data[nextDP]['pos'],d2nextPos)
         nextD = dist(me,nextPos)
-        if nextD < minDfromO:
-            minDfromO = nextD
+        dCopy = copy.deepcopy(data)
+        dd = getDamDist(oppo_life)
+        dd = 2145 if dd < 2145 else dd
+        danger,cost,myD = getIntercept(me,dCopy,nextDP,nextPos,1,0,None,dd)
+        print([oppo_id,danger,cost,myD],file=sys.stderr)
+        if nextD <= dd: myD = me
+        if nextD < minDfromO: minDfromO = nextD
         oppo[oppo_id] = {
             'pos':nextPos,
             'hp':oppo_life,
             'd':nextD,
             'nD':nextDP,
-            'dd':(nextD - getDamDist(oppo_life))/1000,
+            'dd':dist(me,myD)/1000,
             'dd2':(nextD - getDamDist(oppo_life/2+0.5))/1000,
-            'dd3':(nextD - getDamDist(oppo_life/3+0.5))/1000,
-            'tnD':d2nextDP/500}
+            'tnD':d2nextDP/500,
+            'danger':danger,
+            'cost':round(20 - (cost/data_count) * 20,1),
+            'myD':myD}
     
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr)
     #print(oppo,file=sys.stderr)
+    for oid in oppo:
+        op = oppo[oid]
+        op['dd'] = -1 if op['dd'] < -1 else op['dd']
+        score = op['dd'] * 2.15 + op['cost'] + op['danger'] + op['tnD']
+        op['sc'] = round(score,2)
 
-    for oid in sorted(oppo,key=lambda oid: oppo[oid]['dd'] * 5 + data[oppo[oid]['nD']]['w']):
+    for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
+        op = oppo[oid]
+        print([oid,op['sc'],op['dd'],op['cost'],op['danger'],op['tnD']],file=sys.stderr)
+
+
+    for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
         print([oid,oppo[oid], data[oppo[oid]['nD']]],file=sys.stderr)
-        if minDfromO <= 2010:
-            myD = getMySafeDest(me,oppo,data)
+        if minDfromO < 2000:
+            myD = getMySafeDest(me,me,oppo,data)
             print("MOVE " + " ".join([str(nr) for nr in myD]))
-        elif  oppo[oid]['dd'] < 0:
+        elif  oppo[oid]['dd'] <= 0:
             print("SHOOT " + str(oid))
-        elif oppo[oid]['hp'] > 10 and getDam(oppo[oid]['d']) > 7:
+        elif oppo[oid]['hp'] > 13 and getDam(oppo[oid]['d']) > 9:
             print("SHOOT " + str(oid))
-        elif oppo[oid]['dd2'] < 0 and oppo[oid]['tnD'] -  oppo[oid]['dd'] < 1 and data[oppo[oid]['nD']]['w'] == oppo[oid]['tnD']:
+        elif oppo[oid]['dd2'] < 0 and oppo[oid]['tnD'] - oppo[oid]['dd'] < 1 and data[oppo[oid]['nD']]['w'] == oppo[oid]['tnD']:
             print("SHOOT " + str(oid))
         else:
             opA2nD = angle(oppo[oid]['pos'],data[oppo[oid]['nD']]['pos'])
             #need to figure out my dest formula.. atm it's not so good.. also need to think a bit more about movement
-            myD = getAngleDest(oppo[oid]['pos'],me,opA2nD)
+            myD = oppo[oid]['myD']
             if dist(me,myD) > 1001:
                 myD = dest(me,myD,1001)
-            myD = getMySafeDest(myD,oppo,data)
+            myD = getMySafeDest(myD,me,oppo,data)
             print("MOVE " + " ".join([str(nr) for nr in myD]))
         break
