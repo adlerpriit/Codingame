@@ -55,15 +55,15 @@ def getNextDP(data,pos):
         data[mID]['w'] += mD/500
     return(mID,mD)
 
-def getMySafeDest(me,ref,oppo,data):
+def getMySafeDest(me,ref,oppo,data,margin):
     for oid in oppo:
-        if dist(me,oppo[oid]['pos']) < 2000:
+        if dist(me,oppo[oid]['pos']) < margin:
             #opA2nD = angle(oppo[oid]['pos'],data[oppo[oid]['nD']]['pos'])
             #myD = getAngleDest(oppo[oid]['pos'],me,opA2nD)
             myD = dest(oppo[oid]['pos'],me, 2680)
             if dist(ref,myD) > 1001:
                 myD = dest(ref,myD,1001)
-            return(getMySafeDest(myD,ref,oppo,data))
+            return(getMySafeDest(myD,ref,oppo,data,margin))
     return(me)
 
 def angleDest(ref,angle):
@@ -132,14 +132,13 @@ while True:
             'd':nextD,
             'nD':nextDP,
             'dd':(nextD - getDamDist(oppo_life))/1000,
-            'dd2':(nextD - getDamDist(oppo_life/2+0.5))/1000,
-            'dd3':(nextD - getDamDist(oppo_life/3+0.5))/1000,
+            'dd2':(nextD - getDamDist(oppo_life/2 + 0.5))/1000,
+            'dd3':(nextD - getDamDist(oppo_life/3 + 0.5))/1000,
             'tnD':d2nextDP/500,
             'danger':danger,
-            'cost':round(15 - (cost/(5 if data_count > 5 else data_count)) * 15,1),
+            'cost':round(15 - (cost/data_count) * 15,1),
             'myD':myD}
     
-    # round(15 - (cost/data_count) * 15,1)
     # Write an action using print
     # To debug: print("Debug messages...", file=sys.stderr)
     #print(oppo,file=sys.stderr)
@@ -151,19 +150,21 @@ while True:
 
     for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
         op = oppo[oid]
-        print([oid,op['sc'],op['dd'],op['dd2'],op['cost'],op['danger'],op['tnD']],file=sys.stderr)
+        print([oid,op['sc'],op['dd'],op['dd2'],op['dd3'],op['cost'],op['danger'],op['tnD']],file=sys.stderr)
 
 
     for oid in sorted(oppo,key=lambda oid: oppo[oid]['sc']):
         print([oid,oppo[oid], data[oppo[oid]['nD']]],file=sys.stderr)
         if minDfromO < 2000:
-            myD = getMySafeDest(me,me,oppo,data)
+            myD = getMySafeDest(me,me,oppo,data,2000)
             print("MOVE " + " ".join([str(nr) for nr in myD]))
         elif  oppo[oid]['dd'] < 0:
             print("SHOOT " + str(oid))
-        elif oppo[oid]['hp'] > 10 and getDam(oppo[oid]['d']) > 9:
+        elif oppo[oid]['hp'] > 10 and getDam(oppo[oid]['d']) > 8:
             print("SHOOT " + str(oid))
         elif oppo[oid]['dd2'] < 0 and oppo[oid]['tnD'] - oppo[oid]['dd'] < 1 and data[oppo[oid]['nD']]['w'] == oppo[oid]['tnD']:
+            print("SHOOT " + str(oid))
+        elif oppo[oid]['dd3'] < 0 and oppo[oid]['tnD'] - oppo[oid]['dd2'] < 1 and data[oppo[oid]['nD']]['w'] == oppo[oid]['tnD']:
             print("SHOOT " + str(oid))
         else:
             opA2nD = angle(oppo[oid]['pos'],data[oppo[oid]['nD']]['pos'])
@@ -171,6 +172,6 @@ while True:
             myD = oppo[oid]['myD'] or getAngleDest(oppo[oid]['pos'],me,opA2nD)
             if dist(me,myD) > 1001:
                 myD = dest(me,myD,1001)
-            myD = getMySafeDest(myD,me,oppo,data)
+            myD = getMySafeDest(myD,me,oppo,data,2000)
             print("MOVE " + " ".join([str(nr) for nr in myD]))
         break
