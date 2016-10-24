@@ -47,25 +47,39 @@ sub getDest($$$) {
     return([$x,$y]);
 }
 
+sub deltaAngle($$) {
+    my ($a,$b) = @_;
+    my $phi = abs($b - $a) % 360;
+    my $sign = ((($a - $b >= 0 and $a - $b <= 180) or ($a - $b <= -180 and $a - $b >= -360)) ? 1 : -1);
+    return($sign * ($phi < 180 ? $phi : 360 - $phi));
+}
+
+sub getAngleAbs($$) {
+    my ($f,$t) = @_;
+    my $a = int(rad2deg(atan2($f->[1] - $t->[1], $f->[0] - $t->[0])));
+    if ($a < 0) {
+        $a += 360;
+    }
+    return($a);
+}
+
 sub getAvoidDest($$$) {
     my ($a,$b,$c) = @_;
     #a is opponent position
     #b is my position
     #c is my base
-    
-    
-    #if time write expection here. that if opponent base is close than my base and $op_w > 0.5 move next to opponent and stun him
-    
     my $d_ab = getDist($a,$b) || 1;
     my $d_ac = getDist($a,$c);
     my $d_bc = getDist($b,$c);
     my $d_bd = getDist($b,$oase);
-    my $angle_from_oppo = int(rad2deg(atan2($b->[1] - $a->[1], $b->[0] - $a->[0])));
-    my $angle_from_base = int(rad2deg(atan2($b->[1] - $c->[1], $b->[0] - $c->[0])));
+    my $angle_from_oppo = getAngleAbs($b,$a);
+    my $angle_from_base = getAngleAbs($b,$c);
+    my $angle_diff = deltaAngle($angle_from_base,$angle_from_oppo);
     my $sp = $d_ab + 799 - 2560;
        $sp = ($sp > 20 ? $sp : 20); #this only happens if I cannot stun and have to risk running anyway
+       $sp = ($sp < 440 ? $sp : 440);
     my $op_w = ($d_bc - $d_ac) / $d_ab;
-    my $deg_corr = int(((100/440) * $sp)); #$op_w
+    my $deg_corr = int(((50/440) * $sp) * (1+$op_w)); #$op_w
     
     if ($d_bd < $d_bc and $op_w > 0.8 and $sp < 140) {
         print STDERR "Instead of avoid, attack or try get past\n";
@@ -73,28 +87,11 @@ sub getAvoidDest($$$) {
     }
     
     my $angle = $angle_from_oppo;
-    #final angle to get
-    if($op_w < 0) {
-        #opponent is further away from me
-        #turn more toward base
-        $op_w = 1 + $op_w;
-        $deg_corr = int($deg_corr * $op_w);
-        if ($myTID == 0) {
-            $angle = ($angle_from_oppo < $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))
-        } else {
-            $angle = ($angle_from_oppo > $angle_from_base ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr))            
-        }
-    } else {
-        if ($myTID == 0) {
-            $angle = (($angle_from_base > 45 and $angle_from_oppo > 0) or (($angle_from_base < 45 and $angle_from_oppo < 0)) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
-        } else {
-            $angle = (($angle_from_base + 180 > 45 and $angle_from_oppo < 0) or (($angle_from_base + 180 < 45 and $angle_from_oppo > 0)) ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));            
-        }
-    }
+    $angle = ($angle_diff > 0 ? ($angle_from_oppo - $deg_corr) : ($angle_from_oppo + $deg_corr));
     my $x = int(cos(deg2rad($angle)) * 850) + $b->[0];
     my $y = int(sin(deg2rad($angle)) * 850) + $b->[1];
         
-    print STDERR "AVOID INFO: ",$angle_from_base,":",$angle_from_oppo,"(",$deg_corr,":",$angle,") angles with ",$sp," to spare and ",$op_w," weight\n";
+    print STDERR "AVOID INFO: ",$angle_from_base,":",$angle_from_oppo,":",$angle_diff,"(",$deg_corr,":",$angle,") angles with ",$sp," to spare and ",$op_w," weight\n";
     if ($x < 0) {
         $y = ($a->[1] < $b->[1] ? $y - $x : $y + $x);
         $x = 0 ;
@@ -116,7 +113,7 @@ sub initPois() {
     my %pois = () ;
     for my $x (0..8) {
         for my $y (0..4) {
-            if ($x+$y > 1 and $x+$y < 12) {
+            if ($x+$y > 2 and $x+$y < 11) {
                 $pois{"$x $y"} = [$x*2000,$y*2250];
             }
         }
@@ -124,13 +121,14 @@ sub initPois() {
     return(\%pois);
 }
 
-sub getVisOppo($$$) {
-    my ($oppo_ref,$ovis_ref,$buster) = @_;
-    my $d = 2201;
+sub getVisOppo($$$$) {
+    my ($oppo_ref,$ovis_ref,$stun,$buster) = @_;
+    my $d = 4401;
     my $r = undef;
+    my $d2b = (getDist($buster->{'p'},$base) - 1595) / 800;
     for my $oid (keys%$ovis_ref) {
         my $d_from = getDist($oppo_ref->{$oid}->{'p'},$buster->{'p'});
-        if ($d_from < $d and $oppo_ref->{$oid}->{'s'} != 2) {
+        if ($d_from < $d and (not defined($stun->{$oid}) or $stun->{$oid}{'t'} < $d2b)) {
             print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
             $r = $oid;
             $d = $d_from;
@@ -139,13 +137,13 @@ sub getVisOppo($$$) {
     return({'id'=>$r,'d'=>$d});
 }
 
-sub getVisOppoAll($$$) {
-    my ($oppo_ref,$ovis_ref,$buster) = @_;
-    my $d = 2201;
+sub getVisOppoAll($$$$) {
+    my ($oppo_ref,$ovis_ref,$stun,$buster) = @_;
+    my $d = 3001;
     my $r = undef;
-    for my $oid (keys%$ovis_ref) {
+    for my $oid (keys%$oppo_ref) {
         my $d_from = getDist($oppo_ref->{$oid}->{'p'},$buster->{'p'});
-        if ($d_from < $d) {
+        if ($d_from < $d and (not defined($stun->{$oid}) or $oppo_ref->{$oid}{'v'}==9)) {
             print STDERR "OVIS: ",$oid," - ", $d_from,"\n";
             $r = $oid;
             $d = $d_from;
@@ -171,12 +169,6 @@ sub interceptOppo($$$$$$) {
                 return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$oppo_ref->{$oid}{'p'}});
             }
         }
-        if ($dists{$oid}{'me'} < 1760 and not defined($stun->{"B".$buster->{'id'}}) and not defined($stun->{$oid})) {
-            unless ($buster->{'s'}==3 and $gois_ref->{"G".$buster->{'v'}}{'s'} > 6) {
-                print STDERR "STUN:",$oid," - ",$oppo_ref->{$oid}{'s'},"(",$dists{$oid}{'me'},")\n";
-                return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$oppo_ref->{$oid}{'p'}});
-            }
-        }
     }
     #sort targets based on distance from their base
     @targets = sort {
@@ -192,10 +184,18 @@ sub interceptOppo($$$$$$) {
                 my $dest = getDest($oase,$oppo_ref->{$oid}{'p'},$dists{$oid}{'ob'} - 901);
                 return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$dest})
             }
-            if ( $my_d <= $op_d) {
-                my $diff = $op_d - $my_d ;
+            if ( $my_d < $op_d and $op_d > 0) {
+                my $diff = $op_d - $my_d - 1 ;
                 my $dest = getDest($oase,$oppo_ref->{$oid}{'p'},1600 + 800*$diff);
                 return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$dest})
+            }
+        }
+    }
+    for my $oid (keys%$oppo_ref) {
+        if ($dists{$oid}{'me'} < 1760 and defined($ovis_ref->{$oid}) and not defined($stun->{"B".$buster->{'id'}}) and not defined($stun->{$oid})) {
+            unless ($buster->{'s'}==3 and $gois_ref->{"G".$buster->{'v'}}{'s'} > 6) {
+                print STDERR "STUN:",$oid," - ",$oppo_ref->{$oid}{'s'},"(",$dists{$oid}{'me'},")\n";
+                return({'id'=>$oid,'d'=>$dists{$oid}{'me'},'dest'=>$oppo_ref->{$oid}{'p'}});
             }
         }
     }
@@ -260,7 +260,7 @@ sub getPoi($$$) {
             #print STDERR "DELETE POI: ",$pid,"\n";
             delete($pois->{$pid});
         } else {
-            if ($pid =~ m[G] and $d_to < $toGoi and !defined($apoi->{$pid})) {
+            if ($pid =~ m[G] and $d_to < $toGoi) {
                 $toGoi = $d_to;
                 $goi = $pid;
             }
@@ -278,13 +278,16 @@ sub getPoi($$$) {
 sub reduceStun($) {
     my $stun = shift;
     my @ids = keys%$stun ;
+    print STDERR "STUN:";
     for my $id (@ids) {
-        if ($stun->{$id}{'t'} == 0) {
+        if ($stun->{$id}{'t'} <= 1) {
             delete($stun->{$id});
         } else {
             $stun->{$id}{'t'} -= 1;
+            print STDERR " [",$id,":",$stun->{$id}{'t'},"]";
         }
     }
+    print STDERR "\n";
 }
 
 sub updateInvisibleOppo($$) {
@@ -301,10 +304,20 @@ sub updateVisibleGois($$$) {
     my ($gois_ref,$gvis_ref,$buster) = @_;
     for my $gid (keys%$gvis_ref) {
         my $d_from = getDist($gois_ref->{$gid}{'p'}, $buster->{'p'});
-        if ($d_from > 1800 and $d_from <= 2200) {
-            $gois_ref->{$gid}{'p'} = getDest($buster->{'p'},$gois_ref->{$gid}{'p'},$d_from + 400)
+        if ($d_from > 1200 and $d_from <= 2200) {
+            $gois_ref->{$gid}{'p'} = getDest($buster->{'p'},$gois_ref->{$gid}{'p'},$d_from + 400);
+            print STDERR "Updateing gost pos:",$gid,"\n";
         }
     }
+}
+
+sub printGois($) {
+    my ($gois_ref) = @_;
+    print STDERR "GOIS:";
+    for my $gid (sort {$gois_ref->{$a}{'s'} <=> $gois_ref->{$b}{'s'}} keys%$gois_ref) {
+        print STDERR " [",$gid,":",$gois_ref->{$gid}{'s'},"]";
+    }
+    print STDERR "\n";
 }
 
 my $tokens;
@@ -320,8 +333,6 @@ my %help_me = ();
 print STDERR "Ghosts in play: ",$ghost_count,"\n";
 # game loop
 while (1) {
-    reduceStun(\%stun);
-    print STDERR "STUN: '",join(" ",keys%stun),"'\n";
     my %gvis = (); #visible ghosts
     my %ovis = (); #visible opponents
     my $apoi = {}; #allocated pois
@@ -342,28 +353,43 @@ while (1) {
             } elsif ($state != 1 and defined($help_me{"B".$eid})) {
                 delete($help_me{"B".$eid})
             }
+            if ($state == 2 and not defined($stun{"B".$eid})) {
+                $stun{"B".$eid}{'t'} = $value;
+            }
         } elsif ($etype == -1) {
             $gvis{"G".$eid} = "visible";
             $gois{"G".$eid} = {'id'=>$eid,'p'=>[$x,$y],'s'=>$state,'v'=>$value};
         } else {
             $ovis{"O".$eid} = "visible";
             $oppo{"O".$eid} = {'id'=>$eid,'p'=>[$x,$y],'s'=>$state,'v'=>$value};
-            if (defined($stun{"O".$eid}) and $state != 2 and $stun{$stun{"O".$eid}{'id'}}{'t'} > 15) {
+            if (defined($stun{"O".$eid}) and $state != 2 and defined($stun{$stun{"O".$eid}{'id'}}) and $stun{$stun{"O".$eid}{'id'}}{'t'} == 19) {
+                print STDERR "Deleting from Stun: ",$stun{"O".$eid}{'id'},",O",$eid,"\n";
                 delete($stun{$stun{"O".$eid}{'id'}});
                 delete($stun{"O".$eid});
-            } elsif (defined($stun{"O".$eid}) and $state == 2) {
+            } elsif ($state == 2 and not defined($stun{"O".$eid})) {
                 $stun{"O".$eid}{'t'} = $value;
             }
         }
     }
         
+    reduceStun(\%stun);
+    printGois(\%gois);
+    #print STDERR "STUN: '",join(" ",keys%stun),"'\n";
     print STDERR "GVIS: '",join(":",keys%gvis),"'\n";
     for my $bid (sort {$a cmp $b} keys%team) {
-        print STDERR "ID: ",$bid," - ",$team{$bid}{'s'}," pos:",join(" ",@{$team{$bid}{'p'}}),"\n";
-        if ($team{$bid}{'s'} == 2 and not defined($stun{$bid})) {
-            $stun{$bid}{'t'} = $team{$bid}{'v'};
+        print STDERR "ID: ",$bid," - ",$team{$bid}{'s'},"/",$team{$bid}{'v'}," pos:",join(" ",@{$team{$bid}{'p'}}),"\n";
+        if ($team{$bid}{'s'} == 2 and $team{$bid}{'v'} == 9) {
+            my $oid = getVisOppoAll(\%oppo,\%ovis,\%stun,$team{$bid});
+            if ($oid->{'id'}) {
+                print STDERR "Adding ",$oid->{'id'}," to stun\n";
+                $stun{$oid->{'id'}}{'t'} = 18;
+                $stun{$oid->{'id'}}{'id'} = $bid;
+            }
         }
         my $isStun = (defined($stun{$bid}) ? " W".$stun{$bid}{'t'}."\n" : "\n");
+        #if ($team{$bid}{'s'} == 2) {
+        #    print("MOVE ".join(" ",@{$team{$bid}{'p'}}).$isStun)
+        #}
         my $poi = getPoi($pois,$apoi,$team{$bid});
         #actions
         #if carrying ghost, bring it to base
@@ -377,14 +403,16 @@ while (1) {
                 $busted_count += 1;
                 if (defined($help_me{$bid})) {delete($help_me{$bid})}
             } else {
-                my $oid = getVisOppo(\%oppo,\%ovis,$team{$bid});
+                my $oid = getVisOppo(\%oppo,\%ovis,\%stun,$team{$bid});
                 if ($oid->{'id'}) {
                     $help_me{$bid} = $oid->{'id'} ;
+                }
+                if ($oid->{'id'} and not defined($stun{$oid->{'id'}})) {
                     my $dist = getDist($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'});
                     if ($dist < 1760 and not defined($stun{$oid->{'id'}}) and not defined($stun{$bid})) {
                         print("STUN ".$oppo{$oid->{'id'}}{'id'}." S1 ".$oid->{'id'}.$isStun);
-                        $stun{$bid}{'t'} = 19;
-                        $stun{$oid->{'id'}}{'t'} = 9;
+                        $stun{$bid}{'t'} = 20;
+                        $stun{$oid->{'id'}}{'t'} = 10;
                         $stun{$oid->{'id'}}{'id'} = $bid;
                     } else {
                         my $dest = getAvoidDest($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'},$base);
@@ -392,37 +420,39 @@ while (1) {
                         print("MOVE ".(join(" ",@$dest))." A ".$oid->{'id'}.$isStun);
                     }
                 } else {
-                    if (defined($help_me{$bid})) {delete($help_me{$bid})}
                     my $dest = getDest($base,$team{$bid}{'p'},1590);
-                    if (int($ghost_count/2) <= $busted_count + $carry_count) {
-                        $oid = getVisOppoAll(\%oppo,\%ovis,$team{$bid});
+                    if (int($ghost_count/2) < $busted_count + $carry_count) {
+                        $oid = getVisOppoAll(\%oppo,\%ovis,\%stun,$team{$bid});
                         if ($oid->{'id'}) {
+                            $help_me{$bid} = $oid->{'id'} ;
                             $dest = getAvoidDest($oppo{$oid->{'id'}}{'p'},$team{$bid}{'p'},$base);
                         } else {
-                            my $d_a = getDist($team{$bid}{'p'},[12000,9000]);
-                            my $d_b = getDist($team{$bid}{'p'},[16000,5000]);
-                            $dest = ($d_a < $d_b ? [10000,9000] : [16000,3000]) ;
+                            my $d_a = getDist($team{$bid}{'p'},[1,9000]);
+                            my $d_b = getDist($team{$bid}{'p'},[16000,1]);
+                            $dest = ($d_a < $d_b ? [1,9000] : [16000,1]) ;
                             #$dest = $team{$bid}{'p'} ;
                         }
                         print STDERR "WAITING/HIDING\n";
                         $isStun = " not yet".$isStun;
                     }
-                    if ($d < 4799 and $d > 4000) {
-                        $dest = getDest($base,$team{$bid}{'p'},3999);
-                    }
+                    if (defined($help_me{$bid})) {delete($help_me{$bid})}
+                    #if ($d < 4795 and $d > 4000) {
+                    #    $dest = getDest($base,$team{$bid}{'p'},3995);
+                    #}
                     print("MOVE ".(join(" ",@$dest))." B".$isStun);
                 }
             }
+            updateVisibleGois(\%gois,\%gvis,$team{$bid});
             next;
         }
         #battle with opponent
         my $oid = interceptOppo(\%oppo,\%ovis,\%gois,\%stun,\%help_me,$team{$bid});
         my $gid = getWeakest(\%gois,\%gvis,$pois,$team{$bid});
-        if ($oid->{'id'} and (!$gid or $gid->{'s'} != 0)) {
-            if ($oid->{'d'} < 1760 and not defined($stun{$bid}) and not defined($stun{$oid->{'id'}})) {
+        if ($oid->{'id'}) {
+            if ($oid->{'d'} < 1760 and not defined($stun{$bid}) and $oppo{$oid->{'id'}}{'s'} != 2) {
                 print("STUN ".$oppo{$oid->{'id'}}{'id'}." S2 ".$oid->{'id'}.$isStun);
-                $stun{$bid}{'t'} = 19;
-                $stun{$oid->{'id'}}{'t'} = 9;
+                $stun{$bid}{'t'} = 20;
+                $stun{$oid->{'id'}}{'t'} = 10;
                 $stun{$oid->{'id'}}{'id'} = $bid;
                 if ($oppo{$oid->{'id'}}{'s'} == 1) {
                     $gois{"G".$oppo{$oid->{'id'}}{'v'}} = {'id'=>$oppo{$oid->{'id'}}{'v'},'p'=>$oppo{$oid->{'id'}}{'p'},'s'=>0,'v'=>0};
@@ -431,14 +461,16 @@ while (1) {
             } else {
                 print("MOVE ".join(" ",@{$oid->{'dest'}})." O ".$oid->{'id'}.$isStun);
             }
+            updateVisibleGois(\%gois,\%gvis,$team{$bid});
             next;
         }
-        #go for the weakest ghost
-        #explore and get the weakest ghosts
+        # go for the weakest ghost
+        # explore and get the weakest ghosts
         if ($poi and (!$gid or $gid->{'s'} > 10)) {
             print STDERR "POI: ",$poi,"\n";
             if (($poi =~ m[G] and !$gid) or $poi !~ m[G]) {
                 print("MOVE ".(join(" ",@{$pois->{$poi}}))." POI ".$poi.$isStun);
+                updateVisibleGois(\%gois,\%gvis,$team{$bid});
                 next;
             }
         }
@@ -459,3 +491,7 @@ while (1) {
     }
     updateInvisibleOppo(\%oppo,\%ovis);
 }
+
+#some comments here. The maps are predictable. There is a set of maps. Based on the count of ghosts, I could guess where the easy ones are and go get them. then regular play goes on. Also probably can predict how many easy ones there are.
+#stun and cooldown need to be split into two. It is causing some errors atm
+#herding seems to be cool strategy

@@ -150,6 +150,10 @@ while True:
     rank = getRank(mpods,opods)
     thrust = 200
     for pid in range(2):
+<<<<<<< HEAD
+=======
+        thrust = 200
+>>>>>>> angle_system
         pod = mpods[pid]
         nX,nY = pod['cp_pos']
         angle = pod['cp_angle']
@@ -182,7 +186,17 @@ while True:
         which_op = -1
         for oid in range(2):
             opod = opods[oid]
+<<<<<<< HEAD
             delta_op_tmp = getDist(pod['next_pos'],opod['next_pos'])
+=======
+            x,y = opod['pos']
+            vx,vy = opod['sp_vec']
+            angle_op = opod['angle']
+            x = x + vx + int(math.cos(math.radians(angle_op)) * 200)
+            y = y + vy + int(math.sin(math.radians(angle_op)) * 200)
+            opod_next_pos = [x,y]
+            delta_op_tmp = getDist(next_pos,opod_next_pos)
+>>>>>>> angle_system
             if delta_op_tmp < delta_op:
                 delta_op = delta_op_tmp
                 angle_op = getAngle([pod['next_pos'],pod['pos']],[opod['next_pos'],opod['pos']])
@@ -191,9 +205,15 @@ while True:
         print("Collision info: " + str(which_op) + " - " + str(int(delta_op)) + ":" + str(int(angle_op)),file=sys.stderr)
         if delta_op < 800 and speed_op + pod['speed'] > 600:
             if angle_op < 90:
+<<<<<<< HEAD
                 nX,nY = opods[which_op]['next_pos']
                 thrust = 200
             elif angle_op > 90 or current_dist < pod['speed'] * prox_constant or stillWithInLast(track,pod):
+=======
+                nX,nY = colli_op
+                thrust = 200
+            elif angle_op > 90 and speed > 300:
+>>>>>>> angle_system
                 thrust = "SHIELD"
         if turn < 1:
             thrust = 200
@@ -201,5 +221,27 @@ while True:
             thrust = "BOOST"
         if pid == 1 and angle < 2 and isinstance(thrust, int) and 'lap' in mprev[pid] and mprev[pid]['lap'] == race_laps and pod['N'] == 0:
             thrust = "BOOST"
+<<<<<<< HEAD
         print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust))
     turn += 1
+=======
+        print(str(int(nX)) + " " + str(int(nY)) + " " + str(thrust) + " " + str(mprev[pid]['lap']) + ":" + str(pod['N']))
+    turn += 1
+
+
+#Some notes here
+#First to make some pen and paper action. Also some testing
+
+#test actual speed, this can also be calculated: speed_vector + angle[corrected, max diff 18°]*thust
+#max straight speed is 1327 ... takes 36 turns to achieve
+#stable turn speed is 1276 ... from max speed it takes 17 turns to get
+
+#from the speed and angle max correction we can calculate circle radius
+#half a circle with 10 coordinate points and assuming stable turn speed (1276), the arc diameter at ends is 8054. radius to 90° sector midpoint is 3389. this arc enables to enter 0° and exit at 180°. though as it is so wide, it probably is not worth to try to take the checkpoints at full speed.
+#also should check, probably takes less turns and less time to get through checkpoint if lowering speed.
+
+#tricky part is to find the entry and exit points the to the circle.
+#but basically if reached entry point, aim for the center point and pod will follow the circle
+
+#calculating the circle is still tricky. It should take into account my speed, distance from checkpoint, angle between me, checkpoint and next checkpoint. dynamically correct the arc entry point, and my speed
+>>>>>>> angle_system
