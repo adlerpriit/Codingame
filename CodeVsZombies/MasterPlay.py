@@ -74,25 +74,16 @@ def updateRoundData(iData, AgentOutput):
     #all zombies at the end of round will be shot
     #zombies move max 400 or onto human coordinates
 
-    #2. ash moves
-    meTarget = [int(i) for i in AgentOutput.split()]
-    if dist(meTarget,iData['me']) <= 1000:
-        iData['me'] = meTarget
-    else:
-        iData['me'] = dest(iData['me'],meTarget,1000)
     #1. zombies move
     for zid in iData['zs']:
         z = iData['zs'][zid]
         z['pos'] = z['next_pos']
-        chId = sorted(iData['hs'], key=lambda h: dist(iData['hs'][h],z['pos']))[0]
-        zTarget = iData['hs'][chId]
-        if dist(zTarget,z['pos']) <= 400:
-            z['next_pos'] = zTarget
-        else:
-            if dist(z['pos'],zTarget) <= dist(z['pos'],iData['me']):
-                z['next_pos'] = dest(z['pos'],zTarget,400)
-            else:
-                z['next_pos'] = dest(z['pos'],iData['me'],400)
+    #2. ash moves
+    meTarget = [int(i) for i in AgentOutput.split()[0:2]]
+    if dist(meTarget,iData['me']) <= 1000:
+        iData['me'] = meTarget
+    else:
+        iData['me'] = dest(iData['me'],meTarget,1000)
     #3. ash shoots zomebies within range
     f1,f2 = 0,1
     zKilled = []
@@ -121,30 +112,45 @@ def updateRoundData(iData, AgentOutput):
     if not iData['zs']:
         print("GAME OVER: You scored\t",iData['score'],"\tpoints")
         return(False)
+    #set next_pos for zombies
+    for zid in iData['zs']:
+        z = iData['zs'][zid]
+        chId = sorted(iData['hs'], key=lambda h: dist(iData['hs'][h],z['pos']))[0]
+        zTarget = iData['hs'][chId]
+        if dist(zTarget,z['pos']) <= 400:
+            z['next_pos'] = zTarget
+        else:
+            if dist(z['pos'],zTarget) <= dist(z['pos'],iData['me']):
+                z['next_pos'] = dest(z['pos'],zTarget,400)
+            else:
+                z['next_pos'] = dest(z['pos'],iData['me'],400)
     iData['round']+=1
     return(True)
 
-for s in range(5):
-    for mz in range(5):
-        for zh in range(10):
-            iData = loadInit()
-            CumSum = 0
-            for gData in iData:
-                #iData initial data for a game all the input in the binning of the game (including the beginning of the first round)
-                while 1:
-                    rData = getRoundData(gData)
-                    rData['s'] = s
-                    rData['mz'] = mz
-                    rData['zh'] = zh
-                    sTime = timer()
-                    AgentOutput = cvz.botResponse(rData)
-                    print("timing:",round(timer()-sTime,3),file=sys.stderr)
-                    Status = updateRoundData(gData, AgentOutput)
-                    if not Status:
+for mh in range(-2,3):
+    for mz in range(-2,3):
+        for zh in range(-2,3):
+            for c in range(-2,3):
+                iData = loadInit()
+                CumSum = 0
+                for gData in iData:
+                    #iData initial data for a game all the input in the binning of the game (including the beginning of the first round)
+                    print(len(gData['hs']),"\t",len(gData['zs']),"\t",end="")
+                    while 1:
+                        rData = getRoundData(gData)
+                        rData['mh'] = mh
+                        rData['mz'] = mz
+                        rData['zh'] = zh
+                        rData['c'] = c
+                        sTime = timer()
+                        AgentOutput = cvz.botResponse(rData)
+                        print("timing:",round(timer()-sTime,3),file=sys.stderr)
+                        Status = updateRoundData(gData, AgentOutput)
+                        if not Status:
+                            break
+                    CumSum += gData['score']
+                    if gData['score'] == 0:
+                        CumSum = 0
                         break
-                CumSum += gData['score']
-                if gData['score'] == 0:
-                    CumSum = 0
-                    break
-                    #pass
-            print("Used params:",s,mz,zh,CumSum)
+                        #pass
+                print("Used params:",mh,mz,zh,c,CumSum)

@@ -1,5 +1,6 @@
 import sys
 import math
+import random
 
 # Save humans, destroy zombies!
 # 63,610
@@ -43,19 +44,37 @@ def deltaAngle(alpha,beta):
     sign = 1 if ((alpha - beta >= 0 and alpha - beta <= 180) or (alpha - beta <= -180 and alpha - beta >= -360)) else -1
     return(sign * (phi if phi < 180 else 360 - phi))
 
+def angleDest(ref,angle):
+    x,y = ref
+    delta = 1000
+    x = x + int(math.cos(math.radians(angle)) * delta)
+    y = y + int(math.sin(math.radians(angle)) * delta)
+    return([x,y])
+
 def z2hdist(hs,zs,pos):
     htoz = dict()
     ztoh = dict()
     for zid in zs:
-        m2zd = dist(pos,zs[zid]['next_pos'])
-        ztoh[zid] = {'h':-1,'d':m2zd}
-        for hid in hs:
-            z2hd = dist(hs[hid],zs[zid]['next_pos'])
-            m2hd = dist(pos,hs[hid])
-            safe = math.ceil(z2hd/400) - math.ceil(m2hd/1000) + 3
-            if (hid not in htoz or htoz[hid]['s'] > safe) and m2zd > z2hd and safe >= 0:
-                htoz[hid] = {'s':safe,'z':zid,'mz':m2zd,'mh':m2hd,'zh':z2hd}
-                ztoh[zid] = {'h':hid,'d':z2hd}
+        ztoh[zid] = {'h':-1,'d':dist(pos,zs[zid]['next_pos'])}
+    for hid in hs:
+        m2hd = round(dist(pos,hs[hid])/1000-2,2)
+        h2zC = 0
+        for zid in zs:
+            m2zd = round(dist(pos,zs[zid]['next_pos'])/1000-1,3)
+            z2hd = round(dist(hs[hid],zs[zid]['next_pos'])/400,3)
+            deltaZ2HD = round(dist(hs[hid],zs[zid]['pos']) - z2hd*400 - dist(zs[zid]['pos'],zs[zid]['next_pos']),2)
+            safe = math.ceil(z2hd) - math.ceil(m2hd) + 1
+            if deltaZ2HD > -1 and m2zd*1000+1000 > z2hd*400:
+                h2zC+=1
+                if zid in ztoh:
+                    del(ztoh[zid])
+            else:
+                continue
+            #print("Calc:",hid,":",{'s':safe,'z':zid,'mz':m2zd,'mh':m2hd,'zh':z2hd,'zD':deltaZ2HD},file=sys.stderr)
+            if (hid not in htoz or htoz[hid]['s'] > safe):
+                htoz[hid] = {'s':safe,'z':zid,'mz':m2zd,'mh':m2hd,'zh':z2hd,'zD':deltaZ2HD}
+        if hid in htoz:
+            htoz[hid]['c'] = h2zC
     return(htoz,ztoh)
 
 def m2zdist(pos,zs):
@@ -66,16 +85,30 @@ def m2zdist(pos,zs):
         mtoz[zid] = {'d':m2zd,'a':m2za}
     return(mtoz)
 
-def getMySafeDest(me,ref,zs,zID,margin,depth):
+def getMySafeDest(me,ref,zs,hs,zID,margin,depth):
     if depth > len(zs):
-        return(avz(zs,zID))
-    for zid in zs:
-        if dist(me,zs[zid]['next_pos']) < margin:
+        return(False)
+    for zid in zID:
+        z2md = dist(zs[zid]['next_pos'],me)
+        z2hd = 50000
+        for hid in hs:
+            td = dist(zs[zid]['next_pos'],hs[hid])
+            z2hd = td if td < z2hd else z2hd
+        if z2md < margin or z2hd < z2md:
             myD = dest(zs[zid]['next_pos'],me, 2040)
             if dist(ref,myD) > 1000:
                 myD = dest(ref,myD,1000)
-            return(getMySafeDest(myD,ref,zs,zID,margin,depth+1))
+            return(getMySafeDest(myD,ref,zs,hs,zID,margin,depth+1))
     return(me)
+
+def getOptDest(myD,me,zs,hs,zID):
+    z2md = 0
+    for zid in zs:
+        td = dist(myD,zs[zid]['next_pos'])
+        z2md = td if td > z2md else z2md
+    if z2md > 2001:
+        myD = getMySafeDest(myD,me,zs,hs,zID,2001,0)
+    return(myD)
 
 def avz(zs,zID):
     X=Y=0
@@ -85,6 +118,16 @@ def avz(zs,zID):
     X/=len(zID)
     Y/=len(zID)
     return(int(X),int(Y))
+
+def getIntercept(me,H,Z):
+    zPos = Z['pos']
+    mPos = me
+    N = 1
+    while dist(mPos,zPos) > 2000:
+        mPos = dest(me,zPos,1000*N)
+        zPos = dest(Z['pos'],H,400*N)
+        N+=1
+    return(mPos)
 
 def parseInput():
     rData = dict()
@@ -101,55 +144,75 @@ def parseInput():
         rData['zs'][zombie_id] = {'pos':[zombie_x,zombie_y],'next_pos':[zombie_xnext,zombie_ynext]}
     return(rData)
 
+def getOrder(H,rData):
+    return( H['mh']*rData['mh'] +
+            H['mz']*rData['mz'] +
+            H['zh']*rData['zh'] +
+            H['c']*rData['c']
+        )
+
 def botResponse(rData):
     me = rData['me']
     hs = rData['hs']
     zs = rData['zs']
-    # for zid in sorted(zs):
-    #     print(zid,zs[zid]['pos'],zs[zid]['next_pos'],file=sys.stderr)
-    tX,tY = me
-    i = 0
     htoz,ztoh = z2hdist(hs,zs,me)
-    hID = sorted(htoz, key=lambda h: htoz[h]['s']*rData['s'] + htoz[h]['mz']*rData['mz'] + htoz[h]['zh']*rData['zh'])
-    mtoz = m2zdist(me,zs)
-    zID = sorted(ztoh, key=lambda z: ztoh[z]['d'])
-    #print(htoz,file=sys.stderr)
-    #print(mtoz,file=sys.stderr)
-    #print(hID[i],htoz[hID[i]],file=sys.stderr)
-    #while htoz[hID[0]]['s'] < 0:
-    #    hID.pop(0)
-    if hID:
-        while htoz[hID[i]]['s'] < 10:
-            print(hID[i],htoz[hID[i]],file=sys.stderr)
-            i+=1
-            if i == len(hID):
-                break
-        myD = dest(zs[htoz[hID[0]]['z']]['next_pos'],me,1999)
-        if dist(zs[htoz[hID[0]]['z']]['next_pos'],me) <= 2998:
-            zC = 0
-            for d in range(1998,1000,-99):
-                tX,tY = dest(zs[htoz[hID[0]]['z']]['next_pos'],me,d)
-                ztC = 0
-                for zid in zs:
-                    if dist([tX,tY],zs[zid]['next_pos']) <= 2000:
-                        ztC += 1
-                if ztC > zC:
-                    zC = ztC
-                    myD = [tX,tY]
-                if zC == len(zs):
-                    break
-    else:
-        myD = dest(me,avz(zs,zID),1000)
-        myD = getMySafeDest(myD,me,zs,zID,2000,0)
-    # Your destination coordinates
-    return(" ".join([str(s) for s in myD]))
+    hID = sorted(htoz, key=lambda h: getOrder(htoz[h],rData))
+    #mtoz = m2zdist(me,zs)
+    zID = sorted(ztoh, key=lambda z: ztoh[z]['d'], reverse=True)
+    while hID and htoz[hID[0]]['s'] < 0:
+        hID.pop(0)
+    print(hID,zID,file=sys.stderr)
+    if hID and len(hID) > 0:
+        #print(len(hID))
+        # i = 0
+        # while htoz[hID[i]]['s'] < 0:
+        #     print(hID[i],htoz[hID[i]],file=sys.stderr)
+        #     i+=1
+        #     if i == len(hID):
+        #         break
+        myD = getIntercept(me,hs[hID[0]],zs[htoz[hID[0]]['z']])
+        if dist(me,myD) > 1000:
+            myD = dest(me,myD,1000)
+            if zID and len(zID) > 0:
+                mytD = getMySafeDest(myD,me,zs,hs,zID,2001,0)
+                if mytD:
+                    myD = mytD
+                    return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":save+safe")
+                else:
+                    return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":save+fail")
+            else:
+                return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":save+cut")
 
+        else:
+            return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":save+close")
+    elif zID and len(zID) > 0:
+        #print("zID:",zID,file=sys.stderr)
+        angleArray = [a for a in range(90)]
+        random.shuffle(angleArray)
+        myD = avz(zs,zID)
+        myD = dest(me,myD,1000) if dist(me,myD) > 1000 else myD
+        myD = getOptDest(myD,me,zs,hs,zID)
+        while not myD and angleArray:
+            myD = dest(me,angleDest(me,angleArray.pop()*4),900)
+            myD = getOptDest(myD,me,zs,hs,zID)
+        if not myD:
+            myD = avz(zs,zID)
+            return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":avoid failed")
+        else:
+            return(" ".join([str(s) for s in myD]) + " :" + str(dist(me,myD)) + ":avoid")
+    else:
+        return(" ".join([str(s) for s in me]) + " :justme:")
+
+def main():
+    while 1:
+        rData = parseInput()
+        rData['mh'] = 1
+        rData['mz'] = 2
+        rData['zh'] = 2
+        rData['c'] = 2
+        AgentOutput = botResponse(rData)
+        print(AgentOutput)
 
 # game loop
-while 1:
-    rData = parseInput()
-    rData['s'] = 1
-    rData['mz'] = 1
-    rData['zh'] = 3
-    AgentOutput = botResponse(rData)
-    print(AgentOutput)
+if __name__ == '__main__':
+    main()
