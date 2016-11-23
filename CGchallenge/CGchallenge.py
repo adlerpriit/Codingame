@@ -46,35 +46,48 @@ while True:
     coords = []
     for i in range(fN):
         coords.append([int(j) for j in input().split()])
-    if lastCoords and lastMove:
-        moveDiff = [list(map(sub,coords[i],lastCoords[i])) for i in range(len(coords))]
-        moveDiffI = "-".join([":".join([str(i) for i in x]) for x in moveDiff])
-        diff = sum([sum([abs(y) for y in x]) for x in moveDiff])
-        print(diff,lastMove, moveDiff,file=sys.stderr)
-        if lastMove not in coms:
-            coms[lastMove] = {moveDiffI:1}
-        else:
-            if moveDiffI not in coms[lastMove]:
-                coms[lastMove][moveDiffI] = 1
-            else:
-                coms[lastMove][moveDiffI] += 1
 
-    [print(x,coms[x],file=sys.stderr) for x in coms]
-
-    coordsMap = "-".join([":".join([str(i) for i in x]) for x in coords])
-    MAP[coordsMap] = 1
+    coordsMap = ":".join([str(i) for i in coords[-1]])
+    # if lastCoords and lastMove:
+    #     moveDiff = [list(map(sub,coords[i],lastCoords[i])) for i in range(len(coords))]
+    #     moveDiffI = "-".join([":".join([str(i) for i in x]) for x in moveDiff])
+    #     diff = sum([sum([abs(y) for y in x]) for x in moveDiff])
+    #     print(diff,lastMove, moveDiff,file=sys.stderr)
+    #     if lastMove not in coms:
+    #         coms[lastMove] = {moveDiffI:1}
+    #     else:
+    #         if moveDiffI not in coms[lastMove]:
+    #             coms[lastMove][moveDiffI] = 1
+    #         else:
+    #             coms[lastMove][moveDiffI] += 1
+    #
+    # [print(x,coms[x],file=sys.stderr) for x in coms]
 
     print(env,file=sys.stderr)
     print(coordsMap,file=sys.stderr)
-    lastCoords = coords
+    lastCoords = coords[-1]
 
 
     move = []
     for t,i in env:
-        if t == '_' and lastMove != op[moves[i]]:
+        if t == '_':
             move.append(moves[i])
     print(move,file=sys.stderr)
-    move = random.choice(move)
+
+    if coordsMap not in MAP:
+        MAP[coordsMap] = {}
+        for m in move:
+            MAP[coordsMap][m] = 0
+
+    if lastMove and lastCoords:
+        MAP[coordsMap][op[lastMove]] += 1
+
+    random.shuffle(move)
+    print(MAP[coordsMap],file=sys.stderr)
+    move = sorted(move, key=lambda d: MAP[coordsMap][d])
+    
+    move = move[0]
+    MAP[coordsMap][move] += 1
     lastMove = move
     print(move)
 
