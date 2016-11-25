@@ -45,7 +45,7 @@ def cBoxes(p, m, R, o):
         nS.append((x+r,y))
     return [bC,nS]
 
-def bSafe(c,b,m,R,bT):
+def bSafe(c,b,m,R,o,bT):
     X,Y = c
     for x in range(1,R):
         x,y = X+x,Y
@@ -58,6 +58,8 @@ def bSafe(c,b,m,R,bT):
             if m[y][x] == 'b' and b[x,y]['t'] > b[c]['t']:
                 b[x,y]['t'] = b[c]['t']
             break
+        if (x,y) in o:
+            break
     for x in range(1,R):
         x,y = X-x,Y
         if x < 0 or x>=width or m[y][x] == 'X':
@@ -68,6 +70,8 @@ def bSafe(c,b,m,R,bT):
         else:
             if m[y][x] == 'b' and b[x,y]['t'] > b[c]['t']:
                 b[x,y]['t'] = b[c]['t']
+            break
+        if (x,y) in o:
             break
     for y in range(1,R):
         x,y = X,Y+y
@@ -80,6 +84,8 @@ def bSafe(c,b,m,R,bT):
             if m[y][x] == 'b' and b[x,y]['t'] > b[c]['t']:
                 b[x,y]['t'] = b[c]['t']
             break
+        if (x,y) in o:
+            break
     for y in range(1,R):
         x,y = X,Y-y
         if y < 0 or y>=height or m[y][x] == 'X':
@@ -90,6 +96,8 @@ def bSafe(c,b,m,R,bT):
         else:
             if m[y][x] == 'b' and b[x,y]['t'] > b[c]['t']:
                 b[x,y]['t'] = b[c]['t']
+            break
+        if (x,y) in o:
             break
     bT[X,Y] = b[c]['t']
 
@@ -113,7 +121,7 @@ def getInput(h):
     #[print(" ".join(x), file=sys.stderr) for x in m]
     bT = {}
     for bl in sorted(b,key=lambda k: b[k]['t']):
-        bSafe(bl,b,m,b[bl]['r'],bT)
+        bSafe(bl,b,m,b[bl]['r'],o,bT)
     obj = {'b':b,'o':o,'me':me,'bT':bT}
     return(m,obj)
 
@@ -261,7 +269,7 @@ def eXplore(m,pos,R,d,G,o):
         X = pos[0] + x
         Y = pos[1] + y
         tdz = 0 if (X,Y) not in o['bT'] else G[pos]['dz']+1
-        if X < 0 or X >= width or Y < 0 or Y >= height or m[Y][X] != '.' or ((X,Y) in G and G[X,Y]['d'] < d) or ((X,Y) in o['bT'] and tdz - o['bT'][X,Y] >= 0 and o['bT'][X,Y] < 3):
+        if X < 0 or X >= width or Y < 0 or Y >= height or m[Y][X] != '.' or ((X,Y) in G and G[X,Y]['d'] < d) or ((X,Y) in o['bT'] and (tdz - o['bT'][X,Y] >= 0 or o['bT'][X,Y] <= 2)):
             continue
         if (X,Y) not in G:
             b = cBoxes((X,Y),m,R,o['o'])
@@ -313,9 +321,9 @@ while True:
     print(c,"d:",G[Target]['d'],"nrS:",len(AvailMoves - set(G[c]['b'][1])),"bC:",G[c]['b'][0],"dz:",G[c]['dz'],(0 if c not in obj['bT'] else obj['bT'][c]),file=sys.stderr)
     #print(Coords,file=sys.stderr)
     act = "MOVE" 
-    if (((G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 0 and G[Target]['d'] == 0) or 
-         (G[obj['me']['p']]['b'][0] > 1 and obj['me']['b'] > 0 and G[Target]['d'] >= 4) or
-         (G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 1 and G[Target]['d'] >= 4)) and (obj['me']['p'] not in obj['bT'] or obj['bT'][obj['me']['p']] > 3)):
+    if (((G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 0 and G[Target]['d'] == 0) or
+         (G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 1 and G[Target]['d'] >= 4) or
+         (G[obj['me']['p']]['b'][0] > 1 and obj['me']['b'] > 0 and G[Target]['d'] >= 4)) and (obj['me']['p'] not in obj['bT'] or obj['bT'][obj['me']['p']] > 4)):
         act = "BOMB"
 
     print(act,Coords[0],Coords[1],round(timer() - sTime, 4))
