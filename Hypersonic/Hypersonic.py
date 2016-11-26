@@ -119,8 +119,11 @@ def getInput(h):
             o[x,y] = {'id':paramA}
     #[print(" ".join(x), file=sys.stderr) for x in m]
     bT = {}
-    for bl in sorted(b,key=lambda k: b[k]['t']):
+    BLOrder = sorted(b,key=lambda k: b[k]['t'])
+    for i in range(len(BLOrder)):
+        bl = BLOrder[i]
         bSafe(bl,b,m,b[bl]['r'],o,bT)
+        BLOrder = sorted(BLOrder,key=lambda k: b[k]['t'])
     obj = {'b':b,'o':o,'me':me,'bT':bT}
     return(m,obj)
 
@@ -133,8 +136,8 @@ def eXplore(m,pos,R,d,G,o):
             continue
         if (X,Y) not in G:
             b = cBoxes((X,Y),m,R,o['o'])
-            if (X,Y) in o['o'] and o['me']['b'] < 6:
-                b[0]+=o['o'][X,Y]['id']+2
+            if (X,Y) in o['o'] and o['me']['b'] < 5:
+                b[0]+=o['o'][X,Y]['id']+3
         else:
             b = G[X,Y]['b']
         G[X,Y] = {'d':d,'s':pos,'b':b,'dz':tdz}
@@ -149,6 +152,7 @@ def getGraph(m,obj):
     return G
     #print(len(G),G,file=sys.stderr)
 
+#next thing to develop here is opponent tracking and avoiding their traps or rather trying to trap them. not so difficult actually. Well it is, some luck needed.
 
 #meLast = None
 # game loop
@@ -165,6 +169,7 @@ while True:
     c = obj['me']['p']
     print(c,"d:",G[c]['d'],"nrS:",len(AvailMoves - set(G[c]['b'][1])),"bC:",G[c]['b'][0],"dz:",G[c]['dz'],(0 if c not in obj['bT'] else obj['bT'][c]),file=sys.stderr)
     #print(Coords,file=sys.stderr)
+    #or G[c]['d'] == 0
     for c in Opt:
         if len(AvailMoves - set(G[c]['b'][1])) == 0:
             continue
@@ -180,7 +185,7 @@ while True:
     #print(Coords,file=sys.stderr)
     act = "MOVE" 
     if (((G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 0 and G[Target]['d'] == 0) or
-         (G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 1 and G[Target]['d'] >= 4) or
+         (G[obj['me']['p']]['b'][0] > 0 and obj['me']['b'] > 1 and G[Target]['d'] >= 3) or
          (G[obj['me']['p']]['b'][0] > 1 and obj['me']['b'] > 0 and G[Target]['d'] >= 4))
         and
          (obj['me']['p'] not in obj['bT'] or obj['bT'][obj['me']['p']] > 4)):
