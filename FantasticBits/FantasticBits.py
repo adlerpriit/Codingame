@@ -22,8 +22,8 @@ def deltaAngle(alpha,beta):
     return(phi if phi < 180 else 360 - phi)
 
 def getOutput(W,oteam,snaff,bludg):
+    T = [opGoalX,3750+random.randint(-1500,1500)]
     if W['S'] == 1:
-        T = [opGoalX,3750+random.randint(-1500,1500)]
         for oid in oteam:
             m2o = getDist(oteam[oid]['p'],W['p'])
             o2t = getDist(oteam[oid]['p'],T)
@@ -41,6 +41,11 @@ def getOutput(W,oteam,snaff,bludg):
             if getDist([myGoalX,3750],W['p']) > D[sid] + 750 and m2s < 4000:
                 myMagic[0] -= 20
                 return("ACCIO " + sid)
+            A = deltaAngle(getAngleAbs(W['p'],T),getAngleAbs(W['p'],snaff[sid]['p']))
+            print("Aim A:",A,file=sys.stderr)
+            if m2s < 1000 and (A < 15 or (A > 40 and A < 50)) and abs(W['p'][0]-opGoalX) > 1500:
+                myMagic[0] -= 20
+                return("FLIPENDO " + sid)
     Thrust = "150"
     for sid in snaff:
         D[sid] = getDist(W['p'],snaff[sid]['p'])
