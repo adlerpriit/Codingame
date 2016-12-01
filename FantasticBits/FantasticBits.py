@@ -2,6 +2,7 @@ import sys
 import math
 import random
 import re
+from timeit import default_timer as timer
 
 my_team_id = int(input())  # if 0 you need to score on the right of the map, if 1 you need to score on the left
 
@@ -42,19 +43,19 @@ def getDest(pos_a,pos_b,d):
         return(pos_a)
     x = int(pos_a[0] - d * (pos_a[0]-pos_b[0])/d_ab)
     y = int(pos_a[1] - d * (pos_a[1]-pos_b[1])/d_ab)
-    #print(x,y,file=sys.stderr)
-    if x < 0:
-        Y = pos_a[1] - (pos_a[1]-y) * pos_a[0]/(pos_a[0]-x)
-        x,y = getDest(pos_a,pos_b,getDist(pos_a,[0,Y]))
-    if y < 0:
-        X = pos_a[0] - (pos_a[0]-x) * pos_a[1]/(pos_a[1]-y)
-        x,y = getDest(pos_a,pos_b,getDist(pos_a,[X,0]))
-    if y > 7500:
-        X = pos_a[0] - (pos_a[0]-x) * (7500-pos_a[1])/(y-pos_a[1])
-        x,y = getDest(pos_a,pos_b,getDist(pos_a,[X,7500]))
-    if x > 16000:
-        Y = pos_a[1] - (pos_a[1]-y) * (16000-pos_a[0])/(x-pos_a[0])
-        x,y = getDest(pos_a,pos_b,getDist(pos_a,[16000,Y]))
+    print(pos_a,pos_b,d,[x,y],file=sys.stderr)
+    # if x < 0:
+    #     Y = pos_a[1] - (pos_a[1]-y) * pos_a[0]/(pos_a[0]-x)
+    #     x,y = getDest(pos_a,pos_b,getDist(pos_a,[0,Y]))
+    # if x > 16000:
+    #     Y = pos_a[1] - (pos_a[1]-y) * (16000-pos_a[0])/(x-pos_a[0])
+    #     x,y = getDest(pos_a,pos_b,getDist(pos_a,[16000,Y]))
+    # if y < 0:
+    #     X = pos_a[0] - (pos_a[0]-x) * pos_a[1]/(pos_a[1]-y)
+    #     x,y = getDest(pos_a,pos_b,getDist(pos_a,[X,0]))
+    # if y > 7500:
+    #     X = pos_a[0] - (pos_a[0]-x) * (7500-pos_a[1])/(y-pos_a[1])
+    #     x,y = getDest(pos_a,pos_b,getDist(pos_a,[X,7500]))
     return([x,y])
 
 def getDestPounce(pos_a,pos_b,d):
@@ -63,7 +64,7 @@ def getDestPounce(pos_a,pos_b,d):
         return(pos_a)
     x = int(pos_a[0] - d * (pos_a[0]-pos_b[0])/d_ab)
     y = int(pos_a[1] - d * (pos_a[1]-pos_b[1])/d_ab)
-    print(x,y,d,file=sys.stderr)
+    print("P",x,y,d,file=sys.stderr)
     if x < 0:
         Y = pos_a[1] - (pos_a[1]-y) * pos_a[0]/(pos_a[0]-x)
         x,y = getDest(pos_a,pos_b,getDist(pos_a,[0,Y]))
@@ -71,7 +72,7 @@ def getDestPounce(pos_a,pos_b,d):
         Y = pos_a[1] - (pos_a[1]-y) * (16000-pos_a[0])/(x-pos_a[0])
         x,y = getDest(pos_a,pos_b,getDist(pos_a,[16000,Y]))
     if y < 75:
-        X = pos_a[0] - (pos_a[0] - x) * pos_a[1] / (pos_a[1] - (y+75))
+        X = pos_a[0] - (pos_a[0]-x) * (pos_a[1]-75)/(pos_a[1]-y)
         x,y = getDestPounce([X,75],[x,75 - (y-75)],d-getDist(pos_a,[X,75]))
     if y > 7425:
         X = pos_a[0] - (pos_a[0]-x) * (7425-pos_a[1])/(y-pos_a[1])
@@ -81,8 +82,6 @@ def getDestPounce(pos_a,pos_b,d):
 
 def getAngleAbs(pos,target):
     alpha = math.degrees(math.atan2(target[1]-pos[1],target[0]-pos[0]))
-    #if alpha < 0:
-    #    alpha += 360
     return(alpha)
 
 def deltaAngle(alpha,beta):
@@ -94,38 +93,44 @@ def getOutput(wid,mteam,oteam,snaff,bludg,defend):
     owid = sorted(mteam)
     owid = owid[1] if owid[0] == wid else owid[0]
     W['n'] = [W['p'][i] + W['sv'][i] for i in range(2)]
-    Y = W['n'][1] if (2500 < W['n'][1] < 5000) else (2500 if W['n'][1] < 2500 else 5000)
-    if W['sv'][1] < 0:
-        T = [opGoalX,Y-W['sv'][1]]
+    if abs(W['p'][0] - opGoalX) < 10000:
+        Y = W['n'][1] if (2600 < W['n'][1] < 4900) else (2600 if W['n'][1] < 2600 else 4900)
+        T = [opGoalX,Y]
     else:
-        T = [opGoalX,Y+W['sv'][1]]
+        myDa = getDist(W['p'],[abs(opGoalX - 10000),500])
+        myDb = getDist(W['p'],[abs(opGoalX - 10000),7000])
+        if myDa < myDb:
+            T = [abs(opGoalX - W['p'][0] - 2000),500]
+        else:
+            T = [abs(opGoalX - W['p'][0] - 2000),7000]
+    T = [T[i]-W['sv'][i] for i in range(2)]
     if W['S'] == 1:
         for bid in bludg:
             m2o = getDist(bludg[bid]['n'],W['n'])
             m2oD = getDest(W['n'],T,m2o)
             if getDist(bludg[bid]['n'],m2oD) < 601:
                 T = getAngleDest(bludg[bid]['n'],bludg[bid]['n'],getAngleAbs(bludg[bid]['n'],W['n']))
-                if W['sv'][1] < 0:
-                    T = [T[i]-int(W['sv'][i]) for i in range(2)]
-                else:
-                    T = [T[i]+int(W['sv'][i]) for i in range(2)]
+                T = [T[i]-W['sv'][i] for i in range(2)]
                 #T[1]-=W['sv'][1]
         for oid in oteam:
             m2o = getDist(oteam[oid]['n'],W['n'])
             m2oD = getDest(W['n'],T,m2o)
             if getDist(oteam[oid]['n'],m2oD) < 601:
                 T = getAngleDest(oteam[oid]['n'],oteam[oid]['n'],getAngleAbs(oteam[oid]['n'],W['n']))
-                #T[1]-=W['sv'][1]
-                if W['sv'][1] < 0:
-                    T = [T[i]-int(W['sv'][i]) for i in range(2)]
-                else:
-                    T = [T[i]+int(W['sv'][i]) for i in range(2)]
+                T = [T[i]-W['sv'][i] for i in range(2)]
         return("THROW " + " ".join([str(s) for s in T]) + " 500")
     Dx = {}
+    #DX = {}
     Dm = {}
+    De = {}
     for sid in snaff:
+        #DX[sid] = getDist([opGoalX,3750],snaff[sid]['n'])
         Dx[sid] = getDist([myGoalX,3750],snaff[sid]['n'])
         Dm[sid] = getDist(W['n'],snaff[sid]['n'])
+        for oid in oteam:
+            dist = getDist(oteam[oid]['n'],snaff[sid]['n'])
+            if (sid in De and De[sid] > dist) or sid not in De:
+                De[sid] = dist
     if myMagic[0] > 10:
         for sid in sorted(Dx,key=Dx.get):
             sD = getDest(snaff[sid]['p'],snaff[sid]['n'],getDist(snaff[sid]['p'],snaff[sid]['n'])*3)
@@ -158,7 +163,7 @@ def getOutput(wid,mteam,oteam,snaff,bludg,defend):
             vx,vy = snaff[sid]['sv']
             vx = snaff[sid]['n'][0] + round(vx*0.75 + math.cos(math.radians(m2sA)) * Fspeed*0.75,0)
             vy = snaff[sid]['n'][1] + round(vy*0.75 + math.sin(math.radians(m2sA)) * Fspeed*0.75,0)
-            print(wid,sid,end=" ",file=sys.stderr)
+            print(wid,sid,[vx,vy],end=" ",file=sys.stderr)
             sD = getDestPounce(snaff[sid]['p'],[vx,vy],(Fspeed+getDist([0,0],snaff[sid]['sv']))*14)
             m2s = getDist(W['n'],snaff[sid]['n'])
             A = deltaAngle(getAngleAbs(W['n'],T),m2sA)
@@ -186,9 +191,9 @@ def getOutput(wid,mteam,oteam,snaff,bludg,defend):
     #             myMagic[0] -= 5
     #             return("OBLIVIATE " + bid)
     Thrust = "150"
-    Dord = sorted(Dm,key=Dm.get)
+    Dord = sorted(Dm,key=lambda k:Dm[k])
     if defend:
-        Dord = sorted(Dx,key=lambda k:Dx[k]+Dm[k])
+        Dord = sorted(Dx,key=lambda k:Dm[k]*2+Dx[k]+De[k])
     for sid in Dord:
         T = getDest(T,snaff[sid]['n'],getDist(snaff[sid]['n'],T) + getDist(W['n'],snaff[sid]['n'])/4)
         T = [int(i) for i in aimTarget(W['p'],W['n'],T)]
@@ -203,15 +208,16 @@ def getOutput(wid,mteam,oteam,snaff,bludg,defend):
 # Grab Snaffles and try to throw them through the opponent's goal!
 # Move towards a Snaffle and use your team id to determine where you need to throw it.
 
-mteam = dict()
-oteam = dict()
-bludg = dict()
 
 # game loop
 while True:
+    sTime = timer()
     myTurn += 1
     myMagic[0] += 1
+    mteam = dict()
+    oteam = dict()
     snaff = dict()
+    bludg = dict()
     entities = int(input())  # number of entities still in game
     for i in range(entities):
         # entity_id: entity identifier
@@ -240,7 +246,7 @@ while True:
     for bid in bludg:
         bludg[bid]['n'] = [bludg[bid]['p'][i] + bludg[bid]['sv'][i] for i in range(2)]
 
-    defend = 1
+    defend = 0
 
     for wid in sorted(mteam):
 
@@ -248,7 +254,7 @@ while True:
         # To debug: print("Debug messages...", file=sys.stderr)
         command = getOutput(wid,mteam,oteam,snaff,bludg,defend)
 
-        defend = 0
+        defend = 1
         # Edit this line to indicate the action for each wizard (0 ≤ thrust ≤ 150, 0 ≤ power ≤ 500)
         # i.e.: "MOVE x y thrust" or "THROW x y power"
         print(command)
@@ -258,3 +264,4 @@ while True:
     for sid in sorted(PETR):
         if myTurn - PETR[sid] > 1:
             del PETR[sid]
+    print("Timing:", round(timer() - sTime, 5), file=sys.stderr)
