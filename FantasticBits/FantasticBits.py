@@ -100,9 +100,9 @@ def getOutput(wid,mteam,oteam,snaff,bludg,defend):
         myDa = getDist(W['p'],[abs(opGoalX - 10000),500])
         myDb = getDist(W['p'],[abs(opGoalX - 10000),7000])
         if myDa < myDb:
-            T = [abs(opGoalX - W['p'][0] - 2000),500]
+            T = [abs(16000 - opGoalX - W['p'][0] - 6000),500]
         else:
-            T = [abs(opGoalX - W['p'][0] - 2000),7000]
+            T = [abs(16000 - opGoalX - W['p'][0] - 6000),7000]
     T = [T[i]-W['sv'][i] for i in range(2)]
     if W['S'] == 1:
         for bid in bludg:
