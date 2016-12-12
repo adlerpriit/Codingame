@@ -21,7 +21,7 @@ def place(n, m, x, r):
             if m[x+1][y] != '.':
                 m[x+1] = m[x+1][:y-1] + n[1] + m[x+1][y:]
                 break
-        return m
+        return [x,x+1]
     if r == 2:
         if x == 0 or m[x][0] != '.' or m[x-1][0] != '.':
             return None
@@ -33,13 +33,13 @@ def place(n, m, x, r):
             if m[x-1][y] != '.':
                 m[x-1] = m[x-1][:y-1] + n[1] + m[x-1][y:]
                 break
-        return m
+        return [x-1,x]
     if r == 3:
         n = n[::-1]
     for y in range(11, 0, -1):
         if m[x][y] == '.':
             m[x] = m[x][:y - 1] + n + m[x][y + 1:]
-            return m
+            return [x]
     return None
 
 
@@ -78,22 +78,32 @@ def collapse(m, M):
     return re
 
 
-def meval(m, x):
+def meval(m, re, sc, cp):
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
-    sc = 0
-    for y in range(11, 1, -1):
-        if m[x][y] == '.':
-            break
-        if m[x][y] != '0':
-            M, n = {}, 0
-            n = crawl(m, x, y, m[x][y], M, n)
-            if n >= 4:
-                sc += n
-                re = collapse(m, M)
-                if re:
-                    for x in re:
-                        sc += meval(m, x) * 10
-    return sc
+    M = {}
+    N = 0
+    # sc = {'B':0,'CP':0,'CB':0,'GB':0}
+    # 'B' 10 * nr of blocks (len(M))
+    # 'CP' chain power. 0,8,16,32,etc
+    # 'CB' colour bonus number of different colurs destroyed. 0 .. 16
+    # 'GB' Group bonus. nr of blocks -4, max score 8, skulls don't count?
+    for x in re:
+        for y in range(11, 1, -1):
+            if m[x][y] == '.':
+                break
+            if m[x][y] != '0':
+                n = 0
+                n = crawl(m, x, y, m[x][y], M, n)
+                if n >= 4:
+                    N += n
+                    sc['B'] = len(M)
+                    sc['GB'] += n
+                    sc['CB'][m[x][y]] = 1
+                    sc['CP'] = cp
+    if N >= 4:
+        re = collapse(m, M)
+        if re:
+            meval(m, re, sc, cp+1)
 
 
 def output(n, m, d):
@@ -107,13 +117,15 @@ def output(n, m, d):
     for x in range(6):
         if m[x][1] == '.':
             for r in [1, 3]:
-                tm = place(N, m[:], x, r)
+                tm, re = place(N, m[:], x, r)
+                sc = {'B':0,'CP':0,'CB':{},'GB':0}
                 if not tm:
                     continue
-                tsc = meval(tm, x)
+                meval(tm, re, sc, 0)
+                tsc = 0 #TODO this does not work currently
                 if d < 2:
                     tmx, tr, ttsc = output(n[:], tm, d + 1)
-                    tsc += ttsc / 2
+                    tsc += ttsc / 4
                 if tsc > opt[0][-1]:
                     opt = [[x, r, tsc]]
                     # msc = tsc
@@ -126,39 +138,57 @@ def output(n, m, d):
     return random.choice(opt)
 
 
+def calcscore(sc):
+    # sc = {'B':0,'CP':0,'CB':{},'GB':0}
+    # 'B' 10 * nr of blocks (len(M))
+    # 'CP' chain power. 0,8,16,32,etc
+    # 'CB' colour bonus number of different colurs destroyed. 0 .. 16
+    # 'GB' Group bonus. nr of blocks -4, max score 8, skulls don't count?
+    m = 2 ** (sc['CP'] - 1) * 8 if sc['CP'] > 0 else 0
+    m += 2 ** (len(sc['CB']) - 1) if len(sc['CB']) > 1 else 0
+    m += sc['GB'] - 4 if sc['GB'] < 13 else 8
+    m = 1 if m < 1 else 999 if m > 999 else m
+    return 10 * sc['B'] * m
+
+
 def genrand(n, m, x, r):
-    sc = 0
-    for i in range(3):
+    tsc = 0
+    for i in range(4):
+        sc = {'B':0,'CP':0,'CB':{},'GB':0}
         N = n.pop(0)
-        tm = place(N, m, x, r)
-        if not tm:
-            return sc
-        sc += meval(m, x)
+        re = place(N, m, x, r)
+        if not re:
+            return tsc
+        #if 3 < sc < 10:
+        #    return 0
+        meval(m, re, sc, 0)
+        tsc += calcscore(sc) / (i + 1)
         x = int(random.random()*6)
-        r = int(random.random()*5)
-    return sc
+        r = int(random.random()*4)
+    return tsc
 
 
 def genrand2(n, m, x, r):
     for i in range(5):
+        sc = {'B': 0, 'CP': 0, 'CB': {}, 'GB': 0}
         N = n.pop(0)
-        tm = place(N, m, x, r)
+        tm, re = place(N, m, x, r)
         if not tm:
             break
         x = int(random.random()*6)
-        r = int(random.random()*5)
-    return meval(m, x)
+        r = int(random.random()*4)
+    return meval(m, re, sc, 0)
 
 
 def outputrand(n, m, sTime):
-    X = None
+    X = -1
     R = None
     SC = 0
     i = 0
     while timer() - sTime < 0.0999:
         i+=1
         x = int(random.random()*6)
-        r = int(random.random()*5)
+        r = int(random.random()*4)
         sc = genrand(n[:], m[:], x, r)
         if sc > SC:
             SC = sc
@@ -217,8 +247,8 @@ def randi(m, past):
             I = opt.pop()
         else:
             # I'm dead anyway
-            I = int(random.random()*6)
-    R = int(random.random()*5)
+            I = int(random.random()*4) + 1
+    R = int(random.random()*4)
     return I, R
 
 
@@ -245,13 +275,13 @@ def main():
 
         m[:] = list(map(''.join, zip(*m)))
         I, R, SC, c = outputrand(n, m, sTime)
-        print([I, R, SC], file=sys.stderr)
+        print([I, R, SC, c], file=sys.stderr)
 
         # Write an action using print
         # To debug: print("Debug messages...", file=sys.stderr)
 
         # "x": the column in which to drop your blocks
-        if not I:
+        if I == -1:
             I, R = randi(m, past)
         print(str(I), str(R))
         past = I
