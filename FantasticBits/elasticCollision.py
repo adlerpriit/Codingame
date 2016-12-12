@@ -1,9 +1,15 @@
 import sys
-import math
+# import math
 import random
 import FantaticBitsOOP as oop
-import turtle
+# import turtle
 from timeit import default_timer as timer
+
+
+def end(sTime, score):
+    elapsedTime = round(timer() - sTime, 4)
+    avgTime = round(elapsedTime / N, 4)
+    print("Score:",score,"\tTime:", elapsedTime, "( average per turn:", avgTime, ")")
 
 
 wizards = []
@@ -53,10 +59,22 @@ for i in range(N):
             print(w.mid, "THROW", T.x, T.y,file=sys.stderr)
             w.throw(T,500)
         else:
+            score = 0
+            remain = 0
             for s in snaffles:
-                if s.distance2(w) < dist:
-                    dist = s.distance2(w)
-                    T = oop.Point(s.x,s.y)
+                if not s.mid:
+                    if s.x == -1000:
+                        score -= 1
+                    else:
+                        score += 1
+                else:
+                    remain += 1
+                    if s.distance2(w) < dist:
+                        dist = s.distance2(w)
+                        T = oop.Point(s.x,s.y)
+            if not T or abs(score) > remain:
+                end(sTime,score)
+                exit(15)
             print(w.mid, "MOVE", T.x, T.y,file=sys.stderr)
             w.boost(T,150)
     for b in bludgers:
@@ -68,10 +86,7 @@ for i in range(N):
                 T = w
         b.boost(oop.Point(T.x,T.y),1000)
     oop.play(units)
-elapsedTime = round(timer() - sTime,4)
-avgTime = round(elapsedTime / N,4)
-print("Time:",elapsedTime,"( average per turn:",avgTime,")")
-
+end(sTime,score)
 
 #mycollision = C.collision(A)
 #print(mycollision.t)

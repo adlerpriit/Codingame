@@ -52,45 +52,68 @@ class Unit(Point):
         self.vx = vx
         self.vy = vy
 
-    def collision(self, u):
-        # square of the distance
-        dist = self.distance2(u)
-        # sum of radii squared
-        sr = (self.r + u.r) * (self.r + u.r)
-        if (type(self) is Wizard and type(u) is Snaffle) or (type(u) is Wizard and type(self) is Snaffle):
-            if type(self) is Wizard:
-                sr = (self.r - 1 + self.r - 1) * (self.r - 1 + self.r - 1)
-            else:
-                sr = (u.r - 1 + u.r - 1) * (u.r - 1 + u.r - 1)
-        if dist < sr:
-            return Collision(self, u, 0.0)
-        if self.vx == u.vx and self.vy == u.vy:
+    def collision(self, u, time):
+        # # square of the distance
+        # dist = self.distance2(u)
+        # # sum of radii squared
+        # sr = (self.r + u.r) * (self.r + u.r)
+        # if (type(self) is Wizard and type(u) is Snaffle) or (type(u) is Wizard and type(self) is Snaffle):
+        #     if type(self) is Wizard:
+        #         sr = (self.r - 1 + self.r - 1) * (self.r - 1 + self.r - 1)
+        #     else:
+        #         sr = (u.r - 1 + u.r - 1) * (u.r - 1 + u.r - 1)
+        # if dist < sr:
+        #     return Collision(self, u, 0.0)
+        # if self.vx == u.vx and self.vy == u.vy:
+        #     return None
+        # # change reference. make u stationary
+        # x = self.x - u.x
+        # y = self.y - u.y
+        # myp = Point(x, y)
+        # vx = self.vx - u.vx
+        # vy = self.vy - u.vy
+        # up = Point(0, 0)
+        # p = up.closest(myp, Point(x + vx, y + vy))
+        # pdist = up.distance2(p)
+        # mypdist = myp.distance2(p)
+        # if pdist < sr:
+        #     length = math.sqrt(vx * vx + vy * vy)
+        #     # find point along the line where the collision occurs?
+        #     backdist = math.sqrt(sr - pdist)
+        #     p.x -= backdist * (vx / length)
+        #     p.y -= backdist * (vy / length)
+        #     # point now further, we're going in wrong way
+        #     if myp.distance2(p) > mypdist:
+        #         return None
+        #     pdist = p.distance(myp)
+        #     if pdist > length:
+        #         return None
+        #     t = pdist / length
+        #     if time + t < 1.0:
+        #         return Collision(self, u, t)
+        # return None
+        x2 = self.x - u.x
+        y2 = self.y - u.y
+        r2 = self.r + u.r
+        if type(self) is Snaffle and type(u) is Wizard:
+            r2 = u.r - 1
+        vx2 = self.vx - u.vx
+        vy2 = self.vy - u.vy
+        a = vx2*vx2 + vy2*vy2
+        if a < 0.0001:
             return None
-        # change reference. make u stationary
-        x = self.x - u.x
-        y = self.y - u.y
-        myp = Point(x, y)
-        vx = self.vx - u.vx
-        vy = self.vy - u.vy
-        up = Point(0, 0)
-        p = up.closest(myp, Point(x + vx, y + vy))
-        pdist = up.distance2(p)
-        mypdist = myp.distance2(p)
-        if pdist < sr:
-            length = math.sqrt(vx * vx + vy * vy)
-            # find point along the line where the collision occurs?
-            backdist = math.sqrt(sr - pdist)
-            p.x -= backdist * (vx / length)
-            p.y -= backdist * (vy / length)
-            # point now further, we're going in wrong way
-            if myp.distance2(p) > mypdist:
-                return None
-            pdist = p.distance(myp)
-            if pdist > length:
-                return None
-            t = pdist / length
-            return Collision(self, u, t)
-        return None
+        b = -2.0*(x2*vx2 + y2*vy2)
+        delta = b*b - 4.0*a*(x2*x2 + y2*y2 - r2*r2)
+        if delta < 0.0:
+            return None
+        t = (b - math.sqrt(delta))*(1.0/(2.0*a))
+        if t <= 0.0:
+            return None
+        if time + t > 1.0:
+            return None
+        return Collision(self, u, t)
+
+
 
     def bounce(self, u):
         #print(self.mid, [self.vx,self.vy], file=sys.stderr)
@@ -105,9 +128,9 @@ class Unit(Point):
         dvx = self.vx - u.vx
         dvy = self.vy - u.vy
         # impact factor
-        product = nx * dvx + ny * dvy
-        fx = (nx * product) / (dnxny2 * mcoeff)
-        fy = (ny * product) / (dnxny2 * mcoeff)
+        product = (nx * dvx + ny * dvy) / (dnxny2 * mcoeff)
+        fx = nx * product
+        fy = ny * product
         # apply impact factor once
         self.vx -= fx / m1
         self.vy -= fy / m1
@@ -136,15 +159,15 @@ class Unit(Point):
         self.vy += math.sin(ra) * thrust/self.m
 
     def end(self):
-        def tround(float):
-            if round(float + 1) - round(float) != 1:
-                return round(float + abs(float) / float * 0.5)
-            return round(float)
+#        def tround(float):
+#            if round(float + 1) - round(float) != 1:
+#                return round(float + abs(float) / float * 0.5)
+#            return round(float)
 
-        self.x = tround(self.x)
-        self.y = tround(self.y)
-        self.vx = tround(self.vx * self.f)
-        self.vy = tround(self.vy * self.f)
+        self.x = round(self.x)
+        self.y = round(self.y)
+        self.vx = round(self.vx * self.f)
+        self.vy = round(self.vy * self.f)
 
 
 class Wizard(Unit):
@@ -250,30 +273,36 @@ class Line():
         self.a = a
         self.b = b
 
-    def collision(self,u):
+    def collision(self,u,time):
         r = u.r
         if type(self) is Goal and type(u) is Snaffle:
             r = -1
         #vertical line
         if self.a.x == self.b.x:
-            if u.x < self.a.x - r < u.x + u.vx or u.x > self.a.x + r > u.x + u.vx:
+            if (u.x + r > 16000 and u.vx > 0) or (u.x - r < 0 and u.vx < 0):
+                return Collision(self, u, 0.0)
+            elif u.x < self.a.x - r < u.x + u.vx or u.x > self.a.x + r > u.x + u.vx:
                 t = (abs(u.x - self.a.x) - r) / abs(u.vx)
                 y = u.y + t*u.vy
                 if self.a.y + u.r < y < self.b.y - u.r:
-                    print("Line collision",u.mid, self.mid,":",u.x,u.y,u.vx,u.vy,t,file=sys.stderr)
-                    return Collision(self, u, t)
+                    #print("Line collision",u.mid, self.mid,":",u.x,u.y,u.vx,u.vy,t,file=sys.stderr)
+                    if time + t < 1.0:
+                        return Collision(self, u, t)
                 else:
                     return None
             else:
                 return None
         #horisontal line
         if self.a.y == self.b.y:
-            if u.y < self.a.y - r < u.y + u.vy or u.y > self.a.y + r > u.y + u.vy:
+            if (u.y + r > 7500 and u.vy > 0) or (u.y - r < 0 and u.vy < 0):
+                return Collision(self, u, 0.0)
+            elif u.y < self.a.y - r < u.y + u.vy or u.y > self.a.y + r > u.y + u.vy:
                 t = (abs(u.y - self.a.y) - r) / abs(u.vy)
                 x = u.x + t*u.vx
                 if self.a.x + u.r < x < self.b.x - u.r:
-                    print("Line collision",u.mid, self.mid,":",u.x,u.y,u.vx,u.vy,t,file=sys.stderr)
-                    return Collision(self, u, t)
+                    #print("Line collision",u.mid, self.mid,":",u.x,u.y,u.vx,u.vy,t,file=sys.stderr)
+                    if time + t < 1.0:
+                        return Collision(self, u, t)
                 else:
                     return None
             else:
@@ -282,19 +311,19 @@ class Line():
     def bounce(self, u):
         # this is gross oversimplification here. as the lines are only vertical or hoisontal
         # vertical line
-        #print(u.mid, u.x, u.y, u.vx, u.vy, file=sys.stderr, end="\t")
+        # print(u.mid, u.x, u.y, u.vx, u.vy, file=sys.stderr, end="\t")
         if self.a.x == self.b.x:
-            if abs(u.x - self.a.x) != u.r:
-                print("OFF",self.mid,u.mid,u.x,self.a.x,file=sys.stderr)
-            else:
-                print("ON:",self.mid,u.mid,u.x,self.a.x,file=sys.stderr)
+            # if abs(u.x - self.a.x) != u.r:
+            #    print("OFF",self.mid,u.mid,u.x,self.a.x,file=sys.stderr)
+            # else:
+            #    print("ON:",self.mid,u.mid,u.x,self.a.x,file=sys.stderr)
             u.vx = -u.vx
         # horisontal line
         if self.a.y == self.b.y:
-            if abs(u.y - self.a.y) != u.r:
-                print("OFF",self.mid,u.mid,u.y,self.a.y,file=sys.stderr)
-            else:
-                print("ON:",self.mid,u.mid,u.y,self.a.y,file=sys.stderr)
+            # if abs(u.y - self.a.y) != u.r:
+            #     print("OFF",self.mid,u.mid,u.y,self.a.y,file=sys.stderr)
+            # else:
+            #     print("ON:",self.mid,u.mid,u.y,self.a.y,file=sys.stderr)
             u.vy = -u.vy
         #print(u.vx, u.vy, file=sys.stderr)
 
@@ -305,9 +334,16 @@ class Goal(Line):
 
     def bounce(self, u):
         if type(u) is Snaffle:
+            u.mid = None
+            u.vx = 0
+            u.vy = 0
             if self.mid == 'gw':
+                u.x = -1000
+                u.y = 3750
                 return 1
             else:
+                u.x = 17000
+                u.y = 3750
                 return 0
         else:
             super().bounce(u)
@@ -342,57 +378,63 @@ def play(entities):
     #     S = entities[eid]
     #     print(eid, S.x, S.y, S.vx, S.vy, type(S), sep="\t", file=sys.stderr)
     t = 0.0
+    n = 0
     past_collision = {}
     while t < 1.0:
+        if n > 100:
+            exit("INF LOOP")
         first_collision = None
         for i in range(len(eID)-1):
+            if not entities[eID[i]].mid:
+                continue
             for el in Arena.el:
-                col = el.collision(entities[eID[i]])
-                if col and col.t == 0.0 and col.b.mid in past_collision and past_collision[col.b.mid] == col.a.mid:
+                col = el.collision(entities[eID[i]], t)
+                if col and col.t <= 0.0001 and (col.b.mid, col.a.mid) in past_collision:
                     continue
-                if col and col.t + t < 1.0 and (not first_collision or col.t < first_collision.t):
+                if col and (not first_collision or col.t < first_collision.t):
                     first_collision = col
                     if col.t == 0.0:
                         break
             for j in range(i + 1, len(eID)):
-                col = entities[eID[j]].collision(entities[eID[i]])
-                if col and col.t == 0.0 and col.b.mid in past_collision and past_collision[col.b.mid] == col.a.mid:
+                if not entities[eID[j]].mid:
                     continue
-                if col and col.t + t < 1.0 and (not first_collision or col.t < first_collision.t):
+                col = entities[eID[j]].collision(entities[eID[i]], t)
+                if col and col.t <= 0.0001 and (col.b.mid, col.a.mid) in past_collision:
+                    continue
+                if col and (not first_collision or col.t < first_collision.t):
                     first_collision = col
                     if col.t == 0.0:
                         break
         if not first_collision:
             for eid in eID:
+                if not entities[eid].mid:
+                    continue
                 entities[eid].move(1.0 - t)
             t = 1.0
         else:
             if first_collision.t > 0.0:
                 for eid in eID:
-                    u = entities[eid]
-                    print(u.mid, u.x, u.y, "-->", end=" ", file=sys.stderr)
+                    if not entities[eid].mid:
+                        continue
+                    #u = entities[eid]
+                    #print(u.mid, u.x, u.y, "-->", end=" ", file=sys.stderr)
                     entities[eid].move(first_collision.t)
-                    print(u.x, u.y, "[", first_collision.t, "]", file=sys.stderr)
+                    #print(u.x, u.y, "[", first_collision.t, "]", file=sys.stderr)
                 t += first_collision.t
-            past_collision[first_collision.b.mid] = first_collision.a.mid
-            if (type(first_collision.a) is Wizard and type(first_collision.b) is Snaffle) or (type(first_collision.b) is Wizard and type(first_collision.a) is Snaffle):
-                if type(first_collision.a) is Wizard:
-                    if first_collision.a.catch(first_collision.b):
-                        print(first_collision.a.mid, "caught",first_collision.b.mid,file=sys.stderr)
-                else:
-                    if first_collision.b.catch(first_collision.a):
-                        print(first_collision.b.mid, "caught",first_collision.a.mid,file=sys.stderr)
+            past_collision[first_collision.b.mid, first_collision.a.mid] = t
+            if type(first_collision.b) is Wizard and type(first_collision.a) is Snaffle:
+                print(first_collision.b.mid, "caught",first_collision.a.mid,file=sys.stderr)
+                first_collision.b.catch(first_collision.a)
             else:
-                print("bounce", first_collision.a.mid, first_collision.b.mid, first_collision.t,
-                      type(first_collision.a), type(first_collision.b), file=sys.stderr)
+                # print("bounce", first_collision.a.mid, first_collision.b.mid, first_collision.t, type(first_collision.a), type(first_collision.b), file=sys.stderr)
                 first_collision.a.bounce(first_collision.b)
-                if (type(first_collision.a) is Bludger and type(first_collision.b) is Wizard) or (type(first_collision.b) is Bludger and type(first_collision.a) is Wizard):
-                    if type(first_collision.a) is Bludger:
-                        first_collision.a.last = first_collision.b
-                    else:
-                        first_collision.b.last = first_collision.a
-        print("time in turn:", t, file=sys.stderr)
+                if type(first_collision.a) is Bludger and type(first_collision.b) is Wizard:
+                    first_collision.a.last = first_collision.b
+        # print("time in turn:", t, file=sys.stderr)
+        n+=1
     for eid in eID:
+        if not entities[eid].mid:
+            continue
         entities[eid].end()
 
 # my_team_id = int(input())  # if 0 you need to score on the right of the map, if 1 you need to score on the left
