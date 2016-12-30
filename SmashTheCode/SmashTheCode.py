@@ -9,57 +9,33 @@ from timeit import default_timer as timer
 # the standard input according to the problem statement.
 
 
-def place(n, m, x, r):
+def place(n, m, t, x, r):
     if r == 0:
-        if x == 5 or m[x][0] != '.' or m[x+1][0] != '.':
+        if x == 5 or t[x] < 0 or t[x + 1] < 0:
             return None
-        for y in range(12):
-            if m[x][y] != '.':
-                m[x] = m[x][:y-1] + n[0] + m[x][y:]
-                break
-        for y in range(12):
-            if m[x+1][y] != '.':
-                m[x+1] = m[x+1][:y-1] + n[1] + m[x+1][y:]
-                break
-        return [x,x+1]
+        m[x] = m[x][:t[x]] + n[0] + m[x][t[x] + 1:]
+        t[x] -= 1
+        m[x + 1] = m[x + 1][:t[x + 1]] + n[1] + m[x + 1][t[x + 1] + 1:]
+        t[x + 1] -= 1
+        return [x, x + 1]
     if r == 2:
-        if x == 0 or m[x][0] != '.' or m[x-1][0] != '.':
+        if x == 0 or t[x] < 0 or t[x - 1] < 0:
             return None
-        for y in range(12):
-            if m[x][y] != '.':
-                m[x] = m[x][:y-1] + n[0] + m[x][y:]
-                break
-        for y in range(12):
-            if m[x-1][y] != '.':
-                m[x-1] = m[x-1][:y-1] + n[1] + m[x-1][y:]
-                break
-        return [x-1,x]
-    if r == 3:
+        m[x] = m[x][:t[x]] + n[0] + m[x][t[x] + 1:]
+        t[x] -= 1
+        m[x - 1] = m[x - 1][:t[x - 1]] + n[1] + m[x - 1][t[x - 1] + 1:]
+        t[x - 1] -= 1
+        return [x - 1, x]
+    if r == 1:
         n = n[::-1]
-    for y in range(11, 0, -1):
-        if m[x][y] == '.':
-            m[x] = m[x][:y - 1] + n + m[x][y + 1:]
-            return [x]
+    if t[x] > 0:
+        m[x] = m[x][:t[x] - 1] + n + m[x][t[x] + 1:]
+        t[x] -= 2
+        return [x]
     return None
 
 
-def crawl(m, x, y, c, M, n):
-    if x < 0 or x > 5 or y < 0 or y > 11:
-        return n
-    # check if we have a match in the grid
-    if m[x][y] == c and (x, y) not in M:
-        M[x, y] = True
-        n += 1
-        n = crawl(m, x, y - 1, c, M, n)
-        n = crawl(m, x, y + 1, c, M, n)
-        n = crawl(m, x - 1, y, c, M, n)
-        n = crawl(m, x + 1, y, c, M, n)
-    elif m[x][y] == '0':
-        M[x, y] = True
-    return n
-
-
-def collapse(m, M):
+def collapse(m, M, t):
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
     X, Y = None, None
     re = []
@@ -68,42 +44,62 @@ def collapse(m, M):
             re.append(x)
             if Y:
                 m[X] = ''.join(['.' for i in range(Ymax - Y + 1)]) + m[X][:Y] + m[X][Ymax + 1:]
+                t[X] += Ymax - Y
                 # new line
             X = x
             Ymax = y
         Y = y
         # print([x,y],[X,Y,Ymin,Ymax],file=sys.stderr)
     m[X] = ''.join(['.' for i in range(Ymax - Y + 1)]) + m[X][:Y] + m[X][Ymax + 1:]
+    t[X] += Ymax - Y
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
     return re
 
 
-def meval(m, re, sc, cp):
+def crawl(m, x, y, c, M, MC, n):
+    if x < 0 or x > 5 or y < 0 or y > 11:
+        return n
+    # check if we have a match in the grid
+    if m[x][y] == c and (x, y) not in M and (x,y) not in MC:
+        M[x, y] = True
+        n += 1
+        n = crawl(m, x, y - 1, c, M, MC, n)
+        n = crawl(m, x, y + 1, c, M, MC, n)
+        n = crawl(m, x - 1, y, c, M, MC, n)
+        n = crawl(m, x + 1, y, c, M, MC, n)
+    elif m[x][y] == '0':
+        M[x, y] = True
+    return n
+
+
+def meval(m, t, re, cp):
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
     M = {}
-    N = 0
-    # sc = {'B':0,'CP':0,'CB':0,'GB':0}
-    # 'B' 10 * nr of blocks (len(M))
-    # 'CP' chain power. 0,8,16,32,etc
-    # 'CB' colour bonus number of different colurs destroyed. 0 .. 16
-    # 'GB' Group bonus. nr of blocks -4, max score 8, skulls don't count?
+    MC = {}
+    sc = 0
+    if not re:
+        return sc
     for x in re:
-        for y in range(11, 1, -1):
+        for y in range(11, -1, -1):
             if m[x][y] == '.':
                 break
             if m[x][y] != '0':
                 n = 0
-                n = crawl(m, x, y, m[x][y], M, n)
+                n = crawl(m, x, y, m[x][y], M, MC, n)
                 if n >= 4:
-                    N += n
-                    sc['B'] = len(M)
-                    sc['GB'] += n
-                    sc['CB'][m[x][y]] = 1
-                    sc['CP'] = cp
-    if N >= 4:
-        re = collapse(m, M)
+                    sc += n
+                    MC.update(M)
+                    M = {}
+                else:
+                    M = {}
+    if sc >= 4:
+        re = collapse(m, MC, t)
         if re:
-            meval(m, re, sc, cp+1)
+            p = 1 if cp == 0 else (2 ** (cp - 1)) * 8
+            p = 999 if p > 999 else p
+            sc += meval(m, t, re, cp + 1) * p
+
+    return sc
 
 
 def output(n, m, d):
@@ -117,15 +113,13 @@ def output(n, m, d):
     for x in range(6):
         if m[x][1] == '.':
             for r in [1, 3]:
-                tm, re = place(N, m[:], x, r)
-                sc = {'B':0,'CP':0,'CB':{},'GB':0}
+                tm = place(N, m[:], x, r)
                 if not tm:
                     continue
-                meval(tm, re, sc, 0)
-                tsc = 0 #TODO this does not work currently
+                tsc = meval(tm, x)
                 if d < 2:
                     tmx, tr, ttsc = output(n[:], tm, d + 1)
-                    tsc += ttsc / 4
+                    tsc += ttsc / 2
                 if tsc > opt[0][-1]:
                     opt = [[x, r, tsc]]
                     # msc = tsc
@@ -138,46 +132,32 @@ def output(n, m, d):
     return random.choice(opt)
 
 
-def calcscore(sc):
-    # sc = {'B':0,'CP':0,'CB':{},'GB':0}
-    # 'B' 10 * nr of blocks (len(M))
-    # 'CP' chain power. 0,8,16,32,etc
-    # 'CB' colour bonus number of different colurs destroyed. 0 .. 16
-    # 'GB' Group bonus. nr of blocks -4, max score 8, skulls don't count?
-    m = 2 ** (sc['CP'] - 1) * 8 if sc['CP'] > 0 else 0
-    m += 2 ** (len(sc['CB']) - 1) if len(sc['CB']) > 1 else 0
-    m += sc['GB'] - 4 if sc['GB'] < 13 else 8
-    m = 1 if m < 1 else 999 if m > 999 else m
-    return 10 * sc['B'] * m
-
-
-def genrand(n, m, x, r):
-    tsc = 0
+def genrand(n, m, t, x, r):
+    sc = 0
     for i in range(4):
-        sc = {'B':0,'CP':0,'CB':{},'GB':0}
         N = n.pop(0)
-        re = place(N, m, x, r)
+        re = place(N, m, t, x, r)
         if not re:
-            return tsc
-        #if 3 < sc < 10:
+            return sc
+        # if 3 < sc < 10:
         #    return 0
-        meval(m, re, sc, 0)
-        tsc += calcscore(sc) / (i + 1)
-        x = int(random.random()*6)
-        r = int(random.random()*4)
-    return tsc
+        sc += meval(m, t, re, 0) * (0.95**(i+1))
+        if sc > 800:
+            return sc
+        x = int(random.random() * 4) + 1
+        r = int(random.random() * 4)
+    return sc
 
 
 def genrand2(n, m, x, r):
     for i in range(5):
-        sc = {'B': 0, 'CP': 0, 'CB': {}, 'GB': 0}
         N = n.pop(0)
-        tm, re = place(N, m, x, r)
+        tm = place(N, m, x, r)
         if not tm:
             break
-        x = int(random.random()*6)
-        r = int(random.random()*4)
-    return meval(m, re, sc, 0)
+        x = int(random.random() * 6)
+        r = int(random.random() * 4)
+    return meval(m, x)
 
 
 def outputrand(n, m, sTime):
@@ -185,15 +165,29 @@ def outputrand(n, m, sTime):
     R = None
     SC = 0
     i = 0
-    while timer() - sTime < 0.0999:
-        i+=1
-        x = int(random.random()*6)
-        r = int(random.random()*4)
-        sc = genrand(n[:], m[:], x, r)
+    t = []
+    for x in range(6):
+        for y in range(11, -1, -1):
+            if m[x][y] == '.':
+                t.append(y)
+                break
+            if y == 0:
+                t.append(-1)
+
+    while timer() - sTime < 0.095:
+        i += 1
+        if sum(t) > 33:
+            x = int(random.random() * 4) + 1
+        else:
+            x = int(random.random() * 6)
+        r = int(random.random() * 4)
+        sc = genrand(n[:], m[:], t[:], x, r)
         if sc > SC:
             SC = sc
             X = x
             R = r
+        if SC > 800:
+            return X, R, SC, i
     return X, R, SC, i
 
 
@@ -206,11 +200,19 @@ def init():
 
 
 def updateturn(m, n, i, r):
-    if not place(n.pop(0), m, i, r):
+    t = []
+    for x in range(6):
+        for y in range(11, -1, -1):
+            if m[x][y] == '.':
+                t.append(y)
+                break
+            if y == 0:
+                t.append(-1)
+    if not place(n.pop(0), m, t, i, r):
         exit()
-    tsc = meval(m, i)
+    tsc = meval(m, t, [i], 0)
     print(', Score', tsc)
-    n.append(''.join([str(int(random.random()*5)+1) for c in range(2)]))
+    n.append(''.join([str(int(random.random() * 5) + 1) for c in range(2)]))
     [print(m[x]) for x in range(6)]
     print(n)
     return tsc
@@ -219,44 +221,38 @@ def updateturn(m, n, i, r):
 def play():
     m, n = init()
     sc = 0
-    past = None
     for t in range(200):
         sTime = timer()
         print("Turn", t, end="")
         # i, r, tsc = output(n[:], m[:], 0)
         i, r, tsc, c = outputrand(n, m, sTime)
-        if not i:
-            i, r = randi(m, past)
-        past = i
-        print('(',tsc,'), Iterations', c, ', Time', round(timer() - sTime, 5), end="")
+        if i == -1:
+            i, r = randi(m)
+        print('(', round(tsc,1), '), Iterations', c, ', Time', round(timer() - sTime, 5), end="")
         sc += updateturn(m, n, i, r)
     print(sc)
 
 
-def randi(m, past):
+def randi(m):
     opt = []
-    for x in range(1,5):
+    for x in range(6):
         if m[x][1] == '.':
             opt.append(x)
     if len(opt) > 1:
         I = random.choice(opt)
-        while I == past:
-            I = random.choice(opt)
     else:
         if opt:
             I = opt.pop()
         else:
             # I'm dead anyway
-            I = int(random.random()*4) + 1
-    R = int(random.random()*4)
+            I = int(random.random() * 4) + 1
+    R = random.choice([1, 3])
     return I, R
 
 
 def main():
-    past = -1
     # game loop
     while True:
-        sTime = timer()
         # n next pieces
         n = []
         # m my map
@@ -274,22 +270,37 @@ def main():
             row = input()  # One line of the map ('.' = empty, '0' = skull block, '1' to '5' = colored block)
 
         m[:] = list(map(''.join, zip(*m)))
+        # [print(m[i], file=sys.stderr) for i in range(6)]
+        t = []
+        for x in range(6):
+            for y in range(11, -1, -1):
+                if m[x][y] == '.':
+                    t.append(y)
+                    break
+                if y == 0:
+                    t.append(-1)
+        sTime = timer()
         I, R, SC, c = outputrand(n, m, sTime)
-        print([I, R, SC, c], file=sys.stderr)
+        if I == -1:
+            I, R = randi(m)
+        N = n.pop(0)
+        re = place(N, m, t, I, R)
+        # [print(m[i], file=sys.stderr) for i in range(6)]
+        sc = meval(m, t, re, 0)
+        print([I, R, round(SC,1), c], file=sys.stderr)
+        print("Block:", N, "| Score:", sc, file=sys.stderr)
+        # [print(m[i], file=sys.stderr) for i in range(6)]
 
         # Write an action using print
         # To debug: print("Debug messages...", file=sys.stderr)
 
         # "x": the column in which to drop your blocks
-        if I == -1:
-            I, R = randi(m, past)
-        print(str(I), str(R))
-        past = I
+        print(str(I), str(R), str(c))
         print("Time:", round(timer() - sTime, 5), file=sys.stderr)
 
 
 if __name__ == "__main__":
     # execute only if run as a script
-    main()
+    # main()
     # init()
-    # play()
+    play()
