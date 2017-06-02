@@ -35,6 +35,42 @@ def place(n, m, t, x, r):
     return None
 
 
+def crawl(m, x, y, c, M, MC, n):
+    if x < 0 or x > 5 or y < 0 or y > 11:
+        return n
+    # check if we have a match in the grid
+    if m[x][y] == c and (x, y) not in M and (x, y) not in MC:
+        M[x, y] = True
+        n += 1
+        n = crawl(m, x, y - 1, c, M, MC, n)
+        n = crawl(m, x, y + 1, c, M, MC, n)
+        n = crawl(m, x - 1, y, c, M, MC, n)
+        n = crawl(m, x + 1, y, c, M, MC, n)
+    elif m[x][y] == '0':
+        M[x, y] = True
+    return n
+
+
+def crawl2(m, x, y, c, M, MC, n):
+    for d in [-1,1]:
+        X = x + d
+        if 0 <= X <= 5:
+            if m[X][y] == c and (X, y) not in M:
+                M[X, y] = True
+                n += 1
+                n = crawl2(m, X, y, c, M, MC, n)
+            if m[X][y] == '0':
+                M[X, y] = True
+        Y = y + d
+        if 0 <= Y <= 11:
+            if m[x][Y] == c and (x, Y) not in M:
+                M[x, Y] = True
+                n += 1
+                n = crawl2(m, x, Y, c, M, MC, n)
+            if m[x][Y] == '0':
+                M[x, Y] = True
+    return n
+
 def collapse(m, M, t):
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
     X, Y = None, None
@@ -56,22 +92,6 @@ def collapse(m, M, t):
     return re
 
 
-def crawl(m, x, y, c, M, MC, n):
-    if x < 0 or x > 5 or y < 0 or y > 11:
-        return n
-    # check if we have a match in the grid
-    if m[x][y] == c and (x, y) not in M and (x,y) not in MC:
-        M[x, y] = True
-        n += 1
-        n = crawl(m, x, y - 1, c, M, MC, n)
-        n = crawl(m, x, y + 1, c, M, MC, n)
-        n = crawl(m, x - 1, y, c, M, MC, n)
-        n = crawl(m, x + 1, y, c, M, MC, n)
-    elif m[x][y] == '0':
-        M[x, y] = True
-    return n
-
-
 def meval(m, t, re, cp):
     # [print(m[i],file=sys.stderr) for i in range(len(m))]
     M = {}
@@ -83,9 +103,9 @@ def meval(m, t, re, cp):
         for y in range(11, -1, -1):
             if m[x][y] == '.':
                 break
-            if m[x][y] != '0':
+            if m[x][y] != '0' and (x, y) not in MC:
                 n = 0
-                n = crawl(m, x, y, m[x][y], M, MC, n)
+                n = crawl2(m, x, y, m[x][y], M, MC, n)
                 if n >= 4:
                     sc += n
                     MC.update(M)
@@ -134,14 +154,18 @@ def output(n, m, d):
 
 def genrand(n, m, t, x, r):
     sc = 0
-    for i in range(4):
+    # i = 5
+    # if sum(t) < 33:
+    #    i = 3
+    i = round(sum(t) / 15) + 2
+    for i in range(i):
         N = n.pop(0)
         re = place(N, m, t, x, r)
         if not re:
             return sc
         # if 3 < sc < 10:
         #    return 0
-        sc += meval(m, t, re, 0) * (0.95**(i+1))
+        sc += meval(m, t, re, 0) * (0.95 ** (i + 1))
         if sc > 800:
             return sc
         x = int(random.random() * 4) + 1
@@ -160,21 +184,12 @@ def genrand2(n, m, x, r):
     return meval(m, x)
 
 
-def outputrand(n, m, sTime):
+def outputrand(n, m, t, sTime):
     X = -1
     R = None
     SC = 0
     i = 0
-    t = []
-    for x in range(6):
-        for y in range(11, -1, -1):
-            if m[x][y] == '.':
-                t.append(y)
-                break
-            if y == 0:
-                t.append(-1)
-
-    while timer() - sTime < 0.095:
+    while timer() - sTime < 0.0975:
         i += 1
         if sum(t) > 33:
             x = int(random.random() * 4) + 1
@@ -199,15 +214,7 @@ def init():
     return m, n
 
 
-def updateturn(m, n, i, r):
-    t = []
-    for x in range(6):
-        for y in range(11, -1, -1):
-            if m[x][y] == '.':
-                t.append(y)
-                break
-            if y == 0:
-                t.append(-1)
+def updateturn(m, n, t, i, r):
     if not place(n.pop(0), m, t, i, r):
         exit()
     tsc = meval(m, t, [i], 0)
@@ -221,15 +228,23 @@ def updateturn(m, n, i, r):
 def play():
     m, n = init()
     sc = 0
-    for t in range(200):
+    for turn in range(200):
         sTime = timer()
-        print("Turn", t, end="")
+        print("Turn", turn, end="")
+        t = []
+        for x in range(6):
+            for y in range(11, -1, -1):
+                if m[x][y] == '.':
+                    t.append(y)
+                    break
+                if y == 0:
+                    t.append(-1)
         # i, r, tsc = output(n[:], m[:], 0)
-        i, r, tsc, c = outputrand(n, m, sTime)
+        i, r, tsc, c = outputrand(n, m, t, sTime)
         if i == -1:
             i, r = randi(m)
-        print('(', round(tsc,1), '), Iterations', c, ', Time', round(timer() - sTime, 5), end="")
-        sc += updateturn(m, n, i, r)
+        print('(', round(tsc, 1), '), Iterations', c, ', Time', round(timer() - sTime, 5), end="")
+        sc += updateturn(m, n, t, i, r)
     print(sc)
 
 
@@ -270,7 +285,6 @@ def main():
             row = input()  # One line of the map ('.' = empty, '0' = skull block, '1' to '5' = colored block)
 
         m[:] = list(map(''.join, zip(*m)))
-        # [print(m[i], file=sys.stderr) for i in range(6)]
         t = []
         for x in range(6):
             for y in range(11, -1, -1):
@@ -279,15 +293,17 @@ def main():
                     break
                 if y == 0:
                     t.append(-1)
+
+        # [print(m[i], file=sys.stderr) for i in range(6)]
         sTime = timer()
-        I, R, SC, c = outputrand(n, m, sTime)
+        I, R, SC, c = outputrand(n, m, t, sTime)
         if I == -1:
             I, R = randi(m)
         N = n.pop(0)
         re = place(N, m, t, I, R)
         # [print(m[i], file=sys.stderr) for i in range(6)]
         sc = meval(m, t, re, 0)
-        print([I, R, round(SC,1), c], file=sys.stderr)
+        print(["I:", I, "R:", R, "Sum(t):", sum(t), "mSC:", round(SC, 1), c], file=sys.stderr)
         print("Block:", N, "| Score:", sc, file=sys.stderr)
         # [print(m[i], file=sys.stderr) for i in range(6)]
 
@@ -301,6 +317,6 @@ def main():
 
 if __name__ == "__main__":
     # execute only if run as a script
-    # main()
+    main()
     # init()
-    play()
+    # play()

@@ -113,8 +113,6 @@ class Unit(Point):
             return None
         return Collision(self, u, t)
 
-
-
     def bounce(self, u):
         #print(self.mid, [self.vx,self.vy], file=sys.stderr)
         #print(u.mid, [u.vx,u.vy], file=sys.stderr)
