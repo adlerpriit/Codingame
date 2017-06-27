@@ -1,6 +1,7 @@
 import sys
 import math
 import random
+from functools import lru_cache
 
 DIRS = {'N':(-1,0), 'NE':(-1,1), 'E':(0,1), 'SE':(1,1),
         'S':(1,0), 'SW':(1,-1), 'W':(0,-1), 'NW':(-1,-1)}
@@ -16,42 +17,24 @@ class wondelWoman(object):
         """
         Update unit (wonam position and reset valid commands)
         """
-        self.x = x
-        self.y = y
+        if x != -1 and y != -1:
+            self._pos = (y, x)
         self._grid = grid  # reference to object, do not change
-        self.valid_commands = []
 
     @property
-    def action(self):
-        if not self.valid_commands:
-            return False, (0, 0), 0
-        targets = {}
-        for act in self.valid_commands:
-            my, mx = [a + b for (a,b) in zip((self.y,self.x), DIRS[act[2]])]
-            by, bx = [a + b for (a,b) in zip((my,mx), DIRS[act[3]])]
-            # not if what not, but score moves. Move that get's point get's a good score
-            #  * move that prevents opponent to get point get's good score
-            #  * move that moves up get's better score than level and fall loses points
-            if (grid.square_value(self.y, self.x) <= grid.square_value(my, mx) and
-                (grid.square_value(by,bx) < 3)):
-                targets[act] = (grid.square_value(my, mx) - grid.square_value(self.y, self.x),
-                                grid.square_value(by,bx))
-        if targets:
-            sorted_targets = sorted(targets, key=lambda a: targets[a][1])
-            sorted_targets = sorted(sorted_targets, key=lambda a: targets[a][0])
-            act = sorted_targets.pop()
-            return act, targets[act], len(self.valid_commands)
-        return (self.valid_commands[int(random.random() * len(self.valid_commands))],
-                (-1, -1),
-                len(self.valid_commands))
+    def position(self):
+        return self._pos
+
+    @position.setter
+    def position(self, pos):
+        self._pos = pos
 
     @property
     def log(self):
-        return (self.id, len(self.valid_commands), [self.x, self.y])
+        return (self.id, self._pos)
 
 class Grid(object):
     def __init__(self, size):
-        print(size, file=sys.stderr)
         self._size = size
         self._grid = [[] for i in range(size)]
 
@@ -66,39 +49,97 @@ class Grid(object):
     def size(self, size):
         self._size = size
 
-    def square_value(self, y, x):
-        return self._grid[y][x]
+    @lru_cache(maxsize=None)
+    def tile_value(self, pos, turn):
+        if not pos:
+            return -1
+        y, x = pos
+        if 0 < y < self._size and 0 < x < self._size:
+            return self._grid[y][x]
+        else:
+            return -1
+
+    @lru_cache(maxsize=None)
+    def tile_diff(self, pos, target, turn):
+        """ Return difference between two tile values (always first - second)
+        """
+        return (self._grid.tile_value(pos, turn) -
+                self._grid.tile_value(target, turn)
 
 class Action(object):
-    def __init__(self, act, cx, cy):
+    def __init__(self, act, pos, grid, turn):
         self._act = act
+        self._pos = pos
+        self._grid = grid
+        self._turn = turn
         self._atype, self._wid, self._mdir, self._bdir = act
         if self._atype == 'PUSH&BUILD':
-            self._push = [a + b for (a,b) in zip((cy,cx), DIRS[self._mdir])]
-            self._build = [a + b for (a,b) in zip(self._push, DIRS[self._bdir])]
+            self._move = False
+            self._push = tuple([a + b for (a,b) in zip(self._pos, DIRS[self._mdir])])
+            self._build = self._push
+            self._pushto = tuple([a + b for (a,b) in zip(self._push, DIRS[self._bdir])])
         else:  # 'MOVE&BUILD'
-            self._move = [a + b for (a,b) in zip((cy,cx), DIRS[self._mdir])]
-            self._build = [a + b for (a,b) in zip(self._move, DIRS[self._bdir])]
+            self._push = False
+            self._move = tuple([a + b for (a,b) in zip(self._pos, DIRS[self._mdir])])
+            self._build = tuple([a + b for (a,b) in zip(self._move, DIRS[self._bdir])])
 
-    def score(self, grid, mteam, oteam):
+    def score(self, mteam=None, oteam=None):
+        for woman in mteam + oteam:
+            if ((self._move and woman.position == self._build) or
+                (self._push and woman.position == self._pushto)):
+                return -10
         #scoring schema
+        self._score = 0
         # I get point 3pt
         # I move up (< 3) 2pt
         # I move on same level 1pt
         # I move down 0pt
-        # I have only one place to move 4pt
+        if self._move:
+            self._score += self._grid.tile_diff(self._move, self._pos, self._turn)
+            if self._grid.tile_value(self._move, self._turn) == 3:
+                self._score += 3
+            # self._score += self._exits(self._move) / 4
+            if self._grid.tile_value(self._build, self._turn) == 3:
+                self._score -= 2
+        else:
+            if self._grid.tile_diff(self._push, self._pushto, self._turn) > 1:
+                self._score += 2
+            self._score += self._grid.tile_diff(self._push, self._pushto, self._turn)
+            self._score += (self._exits(self._push) - self._exits(self._pushto)) / 2
+        self._score += self._exits(self._pos) / 4
         # Push opponent off from 2/3 to 0 4pt
         #  * Difference needs to be 2, so opponent can't move back easily
         # Pushed oppeonent does not have moving options 10pt
         #  Block opponent building/moving capacity by moving 2pt
         #  Block opponent building/moving capacity by building 3pt
         #    * should be connected by number of remaining moves by opponent
+        # Try to avoid places oppoenent can push you off (visible opponents, last known position)
+        return self._score
+
+    def update(self, oteam):
+        if self._push:
+            for woman in oteam:
+                if woman.position == self._push:
+                    woman.position = self._pushto
+
+    def _exits(self, pos):
+        # calculates number of valid exists for position
+        tile_val = self._grid.tile_value(pos, self._turn)
+        exits = 0
+        for exit in DIRS:
+            exit_val = self._grid.tile_value(tuple([a + b for (a,b) in zip(pos, DIRS[exit])]), self._turn)
+            if 0 <= exit_val <= 3 and exit_val - tile_val <= 1:
+                exits += 1
+        return exits
+
+    def __str__(self):
+        return "%s %s %s %s" % self._act
 
 grid = Grid(int(input()))  # size
 units_per_player = int(input())  # units per player
 mteam = [wondelWoman(i) for i in range(units_per_player)]  # my team
 oteam = [wondelWoman(i) for i in range(units_per_player)]  # opponent team
-
+turn = 0
 # game loop
 while True:
     for i in range(grid.size):
@@ -109,13 +150,17 @@ while True:
         mteam[i].update(unit_x, unit_y, grid)
 
     for i in range(units_per_player):
+        # some of them should be invisible? coords -1, -1? then don't update?
         other_x, other_y = [int(j) for j in input().split()]
         oteam[i].update(unit_x, unit_y, grid)
+        print("OPPONENTs", oteam[i].log, (other_y, other_x), file=sys.stderr)
 
     legal_actions = int(input())
+    valid_commands = []
     for i in range(legal_actions):  # valid command for my units
         atype, index, dir_1, dir_2 = input().split()
-        mteam[int(index)].valid_commands.append((atype, index, dir_1, dir_2))
+        valid_commands.append(Action((atype, index, dir_1, dir_2),
+                                     mteam[int(index)].position, grid, turn))
 
     for woman in mteam:
         print(woman.log, file=sys.stderr)
@@ -126,13 +171,17 @@ while True:
     # it might make sense to let it out
     # push opponent only if I'm on 3 or can push opponent off to oblivion
     #  * for that it is needed a way to calculate number of valid moves
-    for woman in mteam:
-        act, attrs, opts = woman.action
-        # action, action attributes (move level, build level), how many other options do I have left
-        if not act:
-            pass
-        else:
-            print("%s %s %s %s" % act)
-        break
-
+    if valid_commands:
+        current_act = valid_commands[0]
+        current_sco = -99
+        for act in valid_commands:
+            score = act.score(mteam, oteam)
+            if  score > current_sco:
+                current_act = act
+                current_sco = score
+        current_act.update(oteam)
+        print("%s %s " % (current_act,current_sco))
+    else:
+        print("Seems that I have lost?")
+    turn += 1
     # simulation / GA would be good choice for this bot. But probably not in python?
