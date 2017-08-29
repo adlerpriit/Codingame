@@ -12,6 +12,7 @@ class wondelWoman(object):
     def __init__(self, id):
         self.id = id
         self._grid = []
+        self._pos = (-1, -1)
 
     def update(self, x, y, grid):
         """
@@ -61,10 +62,10 @@ class Grid(object):
 
     @lru_cache(maxsize=None)
     def tile_diff(self, pos, target, turn):
-        """ Return difference between two tile values (always first - second)
+        """ Return difference between two tile values (always target - current)
         """
-        return (self._grid.tile_value(pos, turn) -
-                self._grid.tile_value(target, turn)
+        return (self.tile_value(target, turn) -
+                self.tile_value(pos, turn))
 
 class Action(object):
     def __init__(self, act, pos, grid, turn):
@@ -72,41 +73,44 @@ class Action(object):
         self._pos = pos
         self._grid = grid
         self._turn = turn
-        self._atype, self._wid, self._mdir, self._bdir = act
+        self._atype, self._wid, self._mdir, self._adir = act
         if self._atype == 'PUSH&BUILD':
             self._move = False
             self._push = tuple([a + b for (a,b) in zip(self._pos, DIRS[self._mdir])])
             self._build = self._push
-            self._pushto = tuple([a + b for (a,b) in zip(self._push, DIRS[self._bdir])])
+            self._pushto = tuple([a + b for (a,b) in zip(self._push, DIRS[self._adir])])
         else:  # 'MOVE&BUILD'
             self._push = False
             self._move = tuple([a + b for (a,b) in zip(self._pos, DIRS[self._mdir])])
-            self._build = tuple([a + b for (a,b) in zip(self._move, DIRS[self._bdir])])
+            self._build = tuple([a + b for (a,b) in zip(self._move, DIRS[self._adir])])
 
     def score(self, mteam=None, oteam=None):
-        for woman in mteam + oteam:
-            if ((self._move and woman.position == self._build) or
-                (self._push and woman.position == self._pushto)):
-                return -10
+        # print(self._move, self._build, self._pos, file=sys.stderr)
+        # for woman in mteam + oteam:
+        #     if ((self._move and woman.position == self._build) or
+        #         (self._push and woman.position == self._pushto)):
+        #         return -10
         #scoring schema
         self._score = 0
         # I get point 3pt
         # I move up (< 3) 2pt
         # I move on same level 1pt
         # I move down 0pt
+        self._score += self._grid.tile_value(self._build, self._turn)
+        if self._grid.tile_value(self._build, self._turn) == 3:
+            self._score -= 6
+
         if self._move:
-            self._score += self._grid.tile_diff(self._move, self._pos, self._turn)
+            self._score += self._grid.tile_diff(self._pos, self._move, self._turn)
+            self._score += self._grid.tile_value(self._move, self._turn)
             if self._grid.tile_value(self._move, self._turn) == 3:
                 self._score += 3
-            # self._score += self._exits(self._move) / 4
-            if self._grid.tile_value(self._build, self._turn) == 3:
-                self._score -= 2
+            self._score += self._exits(self._move) / 2
         else:
-            if self._grid.tile_diff(self._push, self._pushto, self._turn) > 1:
-                self._score += 2
-            self._score += self._grid.tile_diff(self._push, self._pushto, self._turn)
-            self._score += (self._exits(self._push) - self._exits(self._pushto)) / 2
-        self._score += self._exits(self._pos) / 4
+            if self._grid.tile_diff(self._push, self._pushto, self._turn) < -1:
+                self._score += 6
+            self._score -= self._grid.tile_diff(self._push, self._pushto, self._turn) * 3
+            # self._score += (self._exits(self._push) - self._exits(self._pushto))
         # Push opponent off from 2/3 to 0 4pt
         #  * Difference needs to be 2, so opponent can't move back easily
         # Pushed oppeonent does not have moving options 10pt
@@ -152,7 +156,7 @@ while True:
     for i in range(units_per_player):
         # some of them should be invisible? coords -1, -1? then don't update?
         other_x, other_y = [int(j) for j in input().split()]
-        oteam[i].update(unit_x, unit_y, grid)
+        oteam[i].update(other_x, other_y, grid)
         print("OPPONENTs", oteam[i].log, (other_y, other_x), file=sys.stderr)
 
     legal_actions = int(input())
@@ -176,11 +180,12 @@ while True:
         current_sco = -99
         for act in valid_commands:
             score = act.score(mteam, oteam)
-            if  score > current_sco:
+            # print(score, act, file=sys.stderr)
+            if score > current_sco:
                 current_act = act
                 current_sco = score
         current_act.update(oteam)
-        print("%s %s " % (current_act,current_sco))
+        print("%s %d" % (current_act, current_sco))
     else:
         print("Seems that I have lost?")
     turn += 1
