@@ -1,6 +1,7 @@
 import sys
 import math
 from collections import defaultdict
+from random import random
 
 
 class Entity(object):
@@ -25,10 +26,10 @@ class Troop(Entity):
         self.eta = eta
 
 
-def assess_factory(f1):
+def assess_factory_1(f1):
     f1_troops_delta = sum([t.size for t in troops if t.owner != 1 and t.factory_to == f1.eid]) - \
                       sum([t.size for t in troops if t.owner == 1 and t.factory_to == f1.eid])
-    for f2 in factor:
+    for f2 in sorted(factor, key=lambda k: k.production * 10 / distances[f1.eid][k.eid]):
         f2_troops_delta = sum([t.size for t in troops if t.owner != 1 and t.factory_to == f2.eid]) - \
                           sum([t.size for t in troops if t.owner == 1 and t.factory_to == f2.eid])
         if f1 != f2 and f2.owner != 1:
@@ -48,19 +49,34 @@ def assess_factory(f1):
     return None
 
 
-# def assess_factory(f1):
-#     score = defaultdict(dict)
-#     for f2 in factor:
-#         if f2 == f1 or f2.eid == 1:
-#             continue
-#         average_dist = sum([distances[f2.eid][mid] for mid in distances[f2.eid]]) / len(distances[f2.eid])
-#         score[f2.eid]['value'] = int(f2.production * 200 / average_dist)
-#         score[f2.eid]['cost'] = f2.production * distances[f1.eid][f2.eid] + f2.cyborgs + \
-#                                sum([t.size for t in troops if t.owner != 1]) - \
-#                                sum([t.size for t in troops if t.owner == 1])
-#         score[f2.eid]['cost'] -= (f1.cyborgs - 1)
-#
-#     return score
+def get_dests(f1, factor):
+    dests = []
+    for f in factor:
+        if f == f1 or f.eid not in distances[f1.eid]:
+            continue
+        for _ in range((f.production * f.production * (3 - f.owner)) +
+                        int(len(distances[f.eid]) / 4) + int(3 / distances[f1.eid][f.eid])):
+            dests.append(f.eid)
+    return dests
+
+
+def assess_factory_2(f1):
+    dests = get_dests(f1, factor)
+    if not dests:
+        return None
+    send_to = dests[int(random()*len(dests))]
+    f2 = [f for f in factor if f.eid == send_to][0]
+    if f2.owner == -1 and f2.production > 1 and f2.cyborgs > 10 and bomb_count[0] < 2:
+        bomb_count[0] += 1
+        return ' '.join(str(s) for s in ["BOMB", f1.eid, send_to])
+    if f2.owner == 0 and f1.cyborgs > f2.cyborgs + 1:
+        return ' '.join(str(s) for s in ["MOVE", f1.eid, send_to, f2.cyborgs + 1])
+    if f1.production > 0 and f1.cyborgs > f2.production:
+        # send out all produced cyborgs to random target
+        return ' '.join(str(s) for s in ["MOVE", f1.eid, send_to, f2.production + int(f1.cyborgs/10)])
+    if f1.production == 0:
+        return ' '.join(str(s) for s in ["MOVE", f1.eid, send_to, f1.cyborgs])
+    return None
 
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
@@ -72,9 +88,11 @@ distances = defaultdict(dict)
 for _ in range(link_count):
     factory_1, factory_2, distance = [int(j) for j in input().split()]
     distances[factory_1][factory_2] = distance
+    distances[factory_2][factory_1] = distance
+    print(factory_1, factory_2, distance, file=sys.stderr)
 
 # game loop
-game_turn = 0
+bomb_count = [0]
 while True:
     factor = []
     troops = []
@@ -89,14 +107,13 @@ while True:
     orders = []
     for f1 in factor:
         if f1.owner == 1:
-            order = assess_factory(f1)
+            order = assess_factory_2(f1)
             if order:
                 orders.append(order)
             # osort = sorted(order, key=lambda k: order[k]['value'] + order[k]['cost'])
             # print([(fid, order[fid]) for fid in osort], file=sys.stderr)
             # print("MOVE", f1.eid, osort[0],  f1.cyborgs + order[osort[0]]['cost'])
-    if orders and game_turn > 0:
+    if orders:
         print('; '.join(orders))
     else:
         print('WAIT')
-    game_turn += 1
