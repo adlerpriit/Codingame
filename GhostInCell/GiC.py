@@ -235,7 +235,7 @@ while True:
             del bomb_eta[b]
     # print(bomb_eta, file=sys.stderr)
     orders = []
-    for f1 in factor:
+    for f1 in sorted(factor, key=lambda k: k.troop_delta(troops)[5], reverse=True):
         if f1.owner == 1:
             order = assess_factory_3(f1)
             if order:
