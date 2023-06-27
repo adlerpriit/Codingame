@@ -88,7 +88,7 @@ def order_dests(f1):
             delta = 2
         else:
             delta = 0
-        dests[f.eid] = f.production * (2 - f.owner) * delta + int(f_links/2) + delta + f.production
+        dests[f.eid] = f.production * (3 - f.owner) * delta + int(f_links/2) + delta
     return sorted(sorted(dests, key=lambda k:dests[k], reverse=True), key=lambda k: distances[f1.eid][k])
 
 
