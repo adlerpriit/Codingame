@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"time"
 	"sort"
+	"time"
 )
 
 type Point struct {
@@ -48,13 +48,26 @@ func (p Pod) adjust_speed(checkpoints []CP, target Point, debug bool) int {
 	return int(200 - inv_speed)
 }
 
-func (p Pod) predict_action(checkpoints []CP, mPods, oPods []Pod) string {
+func (p Pod) adjust_speed_defend(oPod Pod, target Point, debug bool) int {
+	speed_angle_t := normalize_angle(p.position.angle(target) - p.angle)
+	speed_angle_f := normalize_angle(p.position.angle(oPod.position) - p.angle)
+	speed_angle_v := normalize_angle(p.position.angle(oPod.position) - Point{0, 0}.angle(Point{p.vx, p.vy}))
+	inv_speed := (2*speed_angle_t*speed_angle_t + 4*speed_angle_f*speed_angle_f + speed_angle_v*speed_angle_v) * 5
+	if debug {
+		fmt.Fprintln(os.Stderr, speed_angle_f, speed_angle_v, inv_speed)
+	}
+	if inv_speed >= 200 {
+		return 0
+	}
+	return int(200 - inv_speed)
+}
+
+func (p Pod) predict_action(checkpoints []CP, pods []Pod) string {
 	// new plan, split map into POIs and predict pod trajectory toward each POI
 	// other pods are with the aim of predicting collisions and take them into account when projecting turns ahead
 	cpid := p.nextCheckPointId
 	d2cp := p.position.distance(checkpoints[cpid].position)
 	POI := checkpoints[cpid].position
-	other_pods := append(oPods, mPods[2-p.id])
 	// trajectory := make([]Pod, 20)
 	for x := -4; x < 20; x++ {
 		for y := -3; y < 12; y++ {
@@ -69,10 +82,13 @@ func (p Pod) predict_action(checkpoints []CP, mPods, oPods []Pod) string {
 				if i < 5 {
 					// other pod movement is generic
 					// only do collision detection in less than 5 turns prediction (cause it's highly unreliable)
-					for _, other_pod := range other_pods {
+					for _, other_pod := range pods {
+						if other_pod.id == pod.id {
+							continue
+						}
 						for t := 0; t <= i; t++ {
 							other_pod = other_pod.next_position(150, 0, checkpoints)
-						} 
+						}
 						collide, t := pod.willCollide(other_pod)
 						if collide && t < 1 {
 							// fmt.Fprintln(os.Stderr, "Collision with opponent at t: ", t, "opod: ", other_pod.id, "turn:", i)
@@ -81,7 +97,7 @@ func (p Pod) predict_action(checkpoints []CP, mPods, oPods []Pod) string {
 							// don't bother to accurately calculate new position after collision, just assign new vx and vy for direction change
 							pod.vx = new_vx
 							pod.vy = new_vy
-						}	
+						}
 					}
 				}
 				// pods[i] = pod
@@ -106,9 +122,8 @@ func (p Pod) predict_action(checkpoints []CP, mPods, oPods []Pod) string {
 	// 		"ncpid: ", pod.nextCheckPointId)
 	// }
 
-
 	// check if we are going to collide with opponent
-	for _, opod := range oPods {
+	for _, opod := range pods[2:] {
 		collide, t := p.willCollide(opod)
 		if collide && t < 1 {
 			// we are going to collide, let's report it
@@ -124,11 +139,90 @@ func (p Pod) predict_action(checkpoints []CP, mPods, oPods []Pod) string {
 	return fmt.Sprintf("%d %d %d", POI.x, POI.y, thrust)
 }
 
-func (p Pod) defend_action(checkpoints []CP, mPods, oPods []Pod, oLead int) string {
+func get_defend_score(p Pod, checkpoints []CP) float64 {
+	angle_f := math.Abs(normalize_angle(p.position.angle(checkpoints[p.nextCheckPointId%len(checkpoints)].position) - p.angle))
+	angle_v := math.Abs(normalize_angle(p.position.angle(checkpoints[p.nextCheckPointId%len(checkpoints)].position) - Point{0, 0}.angle(Point{p.vx, p.vy})))
+	speed := Point{0, 0}.distance(Point{p.vx, p.vy})
+	return angle_f * angle_v * float64(speed)
+
+}
+
+func (p Pod) defend_action(checkpoints []CP, pods []Pod, oLead int) string {
 	// function to block opponent lead pod, need to figure out how to intercept him the best
 	// assumption is that we know the order of pods ranking
+	// call this function if I'm not leading and this pod is the second one of mine
+	// try to target the lead opponent pod and optimise for his facing angle, velocity angle and speed relative to his next checkpoint
+	tPod := pods[oLead]
+	score := get_defend_score(tPod, checkpoints)
+	POI := checkpoints[(tPod.nextCheckPointId+1)%len(checkpoints)].position
+	// trajectory := make([]Pod, 20)
+	for x := -4; x < 20; x++ {
+		for y := -3; y < 12; y++ {
+			target := Point{x * 1000, y * 1000}
+			pod := p
+			// pods := make([]Pod, 20)
+			hitTarget := false
+			for i := 0; i < 10; i++ {
+				delta_angle := cap_angle(normalize_angle(pod.position.angle(target) - pod.angle))
+				// adjust thrust based on next checkpoint and target
+				thrust := pod.adjust_speed_defend(tPod, target, false)
+				pod = pod.next_position(thrust, delta_angle, checkpoints)
+				if i < 10 {
+					// other pod movement is generic
+					// only do collision detection in less than 5 turns prediction (cause it's highly unreliable)
+					for _, other_pod := range pods {
+						if other_pod.id == pod.id {
+							continue
+						}
+						for t := 0; t <= i; t++ {
+							other_pod = other_pod.next_position(150, 0, checkpoints)
+						}
+						collide, t := pod.willCollide(other_pod)
+						if collide && t < 1 {
+							// fmt.Fprintln(os.Stderr, "Collision with opponent at t: ", t, "opod: ", other_pod.id, "turn:", i)
+							// this is highly unreliable and the purpose here is to disrupt normal trajectory calculation
+							if other_pod.id == tPod.id {
+								hitTarget = true
+								// if hitting the target, resolve collision with him and predict movement for one more turn, though it is not accurate
+								new_vx, new_vy := other_pod.resolveCollision(pod)
+								pod.vx = new_vx
+								pod.vy = new_vy
+								other_pod = other_pod.next_position(150, 0, checkpoints)
+								if score < get_defend_score(other_pod, checkpoints) {
+									score = get_defend_score(other_pod, checkpoints)
+									POI = target
+								}
+							} else {
+								new_vx, new_vy := pod.resolveCollision(other_pod)
+								// don't bother to accurately calculate new position after collision, just assign new vx and vy for direction change
+								pod.vx = new_vx
+								pod.vy = new_vy
+							}
+						}
+					}
+				}
+				if hitTarget {
+					break
+				}
+			}
+		}
+	}
 
-	return "8000 4500 SHIELD"
+	// check if we are going to collide with opponent
+	for _, opod := range pods[2:] {
+		collide, t := p.willCollide(opod)
+		if collide && t < 1 {
+			// we are going to collide, let's report it
+			fmt.Fprintln(os.Stderr, "Collision with opponent at t: ", t, "opod: ", opod.id)
+			// if velocity angles are opposite, apply shield
+			if math.Abs(normalize_angle(p.angle-opod.angle)) > math.Pi/3 {
+				return fmt.Sprintf("%d %d SHIELD", POI.x, POI.y)
+			}
+		}
+	}
+
+	thrust := p.adjust_speed_defend(tPod, POI, false)
+	return fmt.Sprintf("%d %d %d", POI.x, POI.y, thrust)
 }
 
 // Predicts if and when two pods will collide
@@ -136,8 +230,8 @@ func (p Pod) willCollide(p2 Pod) (bool, float64) {
 	dx := p2.position.x - p.position.x
 	dy := p2.position.y - p.position.y
 	// assume speed preserving thrust
-	vx := int(float64(p2.vx - p.vx) / 0.85)
-	vy := int(float64(p2.vy - p.vy) / 0.85)
+	vx := int(float64(p2.vx-p.vx) / 0.85)
+	vy := int(float64(p2.vy-p.vy) / 0.85)
 
 	// Coefficients for the quadratic equation (At^2 + Bt + C = 0)
 	A := vx*vx + vy*vy
@@ -162,34 +256,34 @@ func (p Pod) willCollide(p2 Pod) (bool, float64) {
 }
 
 func (p Pod) resolveCollision(p2 Pod) (int, int) {
-    // Calculate the difference in position
-    dx := float64(p2.position.x - p.position.x)
-    dy := float64(p2.position.y - p.position.y)
+	// Calculate the difference in position
+	dx := float64(p2.position.x - p.position.x)
+	dy := float64(p2.position.y - p.position.y)
 
-    // Calculate the distance between two pods
-    distance := math.Sqrt(dx*dx + dy*dy)
+	// Calculate the distance between two pods
+	distance := math.Sqrt(dx*dx + dy*dy)
 
-    // Normalize the difference vector
-    nx := dx / distance
-    ny := dy / distance
+	// Normalize the difference vector
+	nx := dx / distance
+	ny := dy / distance
 
-    // Calculate the difference in velocities
-    dvx := float64(p.vx - p2.vx)
-    dvy := float64(p.vy - p2.vy)
+	// Calculate the difference in velocities
+	dvx := float64(p.vx - p2.vx)
+	dvy := float64(p.vy - p2.vy)
 
-    // Calculate the velocity along the normal (dot product)
-    dot := dvx*nx + dvy*ny
+	// Calculate the velocity along the normal (dot product)
+	dot := dvx*nx + dvy*ny
 
-    // Calculate the magnitude of the impulse along the normal
-    impulse := 2 * dot / 2.0 // divided by 2 because we assume equal mass and we distribute the impulse evenly
+	// Calculate the magnitude of the impulse along the normal
+	impulse := 2 * dot / 2.0 // divided by 2 because we assume equal mass and we distribute the impulse evenly
 
-    // Calculate the components of the impulse for each Pod
-    impulseX := impulse * nx
-    impulseY := impulse * ny
+	// Calculate the components of the impulse for each Pod
+	impulseX := impulse * nx
+	impulseY := impulse * ny
 
-    // Update velocities by applying the impulse (pods exchange velocity along the line of impact)
-    new_vx := p.vx - int(impulseX)
-    new_vy := p.vy - int(impulseY)
+	// Update velocities by applying the impulse (pods exchange velocity along the line of impact)
+	new_vx := p.vx - int(impulseX)
+	new_vy := p.vy - int(impulseY)
 	return new_vx, new_vy
 }
 
@@ -248,7 +342,7 @@ func pass_CP(checkpoint CP, P, d Point) bool {
 	}
 
 	// did we pass through checkpoint during this move?
-	return checkpoint.position.distance(Point{cx, cy}) < checkpoint.radius*checkpoint.radius - 400
+	return checkpoint.position.distance(Point{cx, cy}) < checkpoint.radius*checkpoint.radius-400
 }
 
 func normalize_angle(angle float64) float64 {
@@ -282,10 +376,10 @@ func cap_angle(angle float64) float64 {
 }
 
 type Rank struct {
-	id 		int
-	lap 	int
-	checkPointId 	int
-	d2cp	int
+	id           int
+	lap          int
+	checkPointId int
+	d2cp         int
 }
 
 func main() {
@@ -308,8 +402,9 @@ func main() {
 	}
 	for {
 		start := time.Now()
-		mPods := make([]Pod, 2)
-		for i := 0; i < 2; i++ {
+		pods := make([]Pod, 4)
+		for i := 0; i < 4; i++ {
+			// two first ones are mine, two last ones are opponent
 			// x: x position of your pod
 			// y: y position of your pod
 			// vx: x speed of your pod
@@ -324,38 +419,12 @@ func main() {
 			} else {
 				rad_angle = float64(angle) * math.Pi / 180
 			}
-			mPods[i] = Pod{i + 1, Point{x, y}, vx, vy, rad_angle, nextCheckPointId, 400}
-			RANK[i].d2cp = mPods[i].position.distance(checkpoints[nextCheckPointId].position) // the distance is squared
+			pods[i] = Pod{i + 1, Point{x, y}, vx, vy, rad_angle, nextCheckPointId, 400}
+			RANK[i].d2cp = pods[i].position.distance(checkpoints[nextCheckPointId].position) // the distance is squared
 			if nextCheckPointId != RANK[i].checkPointId {
 				RANK[i].checkPointId = nextCheckPointId
 				if nextCheckPointId == 0 {
 					RANK[i].lap += 1
-				}
-			}
-			
-		}
-		oPods := make([]Pod, 2)
-		for i := 0; i < 2; i++ {
-			// x2: x position of the opponent's pod
-			// y2: y position of the opponent's pod
-			// vx2: x speed of the opponent's pod
-			// vy2: y speed of the opponent's pod
-			// angle2: angle of the opponent's pod
-			// nextCheckPointId2: next check point id of the opponent's pod
-			var x2, y2, vx2, vy2, angle2, nextCheckPointId2 int
-			fmt.Scan(&x2, &y2, &vx2, &vy2, &angle2, &nextCheckPointId2)
-			var rad_angle2 float64
-			if angle2 == -1 {
-				rad_angle2 = abs_angle(Point{x2, y2}.angle(checkpoints[nextCheckPointId2].position))
-			} else {
-				rad_angle2 = float64(angle2) * math.Pi / 180
-			}
-			oPods[i] = Pod{i + 3, Point{x2, y2}, vx2, vy2, rad_angle2, nextCheckPointId2, 400}
-			RANK[i+2].d2cp = mPods[i].position.distance(checkpoints[nextCheckPointId2].position) // the distance is squared
-			if nextCheckPointId2 != RANK[i+2].checkPointId {
-				RANK[i+2].checkPointId = nextCheckPointId2
-				if nextCheckPointId2 == 0 {
-					RANK[i+2].lap += 1
 				}
 			}
 		}
@@ -375,16 +444,21 @@ func main() {
 			}
 			return RANK_SORT[a].lap > RANK_SORT[b].lap
 		})
-		for _, r := range RANK_SORT {
-			fmt.Fprintln(os.Stderr, r)
-		}
+		// oLead := 0
+		// for _, r := range RANK_SORT {
+		// 	if r.id > 1 {
+		// 		oLead = r.id
+		// 		break
+		// 	}
+		// }
 
 		if TURN == 0 {
-			fmt.Println(mPods[0].default_action(checkpoints))
+			fmt.Println(pods[0].default_action(checkpoints))
 		} else {
-			fmt.Println(mPods[0].predict_action(checkpoints, mPods, oPods))
+			fmt.Println(pods[0].predict_action(checkpoints, pods))
 		}
-		fmt.Println(mPods[1].predict_action(checkpoints, mPods, oPods))
+
+		fmt.Println(pods[1].predict_action(checkpoints, pods))
 
 		elapsed := time.Since(start)
 		fmt.Fprintln(os.Stderr, "Elapsed time: ", elapsed.Seconds())
