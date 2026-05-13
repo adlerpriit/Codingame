@@ -118,6 +118,7 @@ while True:
     crystals = [c for c in cells if c.t == 2]
 
     CMD = []
+    # this code does not work if I have all my crystals on my side and I have all my ants on my side, otherwise nice balance, can beat boss consistently
     N = 0
     if ants < EGGS * 0.6 + (10 * number_of_bases):
         for cell in sorted(eggs, key=lambda c: min([len(DISTANCES[b.id][c.id]) for b in myBases])):
